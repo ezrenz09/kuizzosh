@@ -1,0 +1,32 @@
+<%- include("partials/head", { title, pageStyles: ["/css/pages/join.css"] }) %>
+
+<main class="join-page">
+  <section class="join-card">
+    <span class="section-pill"><%= typeof joinLabel === "string" ? joinLabel : "Kuizzosh Link" %></span>
+    <h1><%= item.title %></h1>
+    <p><%= typeof joinMessage === "string"
+      ? joinMessage
+      : "This shared Kuizzosh page is live and ready for the next participant experience." %></p>
+
+    <div class="join-meta">
+      <div>
+        <span>Quiz Code</span>
+        <strong><%= item.quiz_code %></strong>
+      </div>
+      <div>
+        <span>Duration</span>
+        <strong><%= item.duration_label %></strong>
+      </div>
+      <div>
+        <span>Owner</span>
+        <strong><%= item.owner_name %></strong>
+      </div>
+      <div>
+        <span>Visibility</span>
+        <strong><%= item.visibility.charAt(0).toUpperCase() + item.visibility.slice(1) %></strong>
+      </div>
+    </div>
+  </section>
+</main>
+
+<%- include("partials/foot") %>

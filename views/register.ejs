@@ -1,0 +1,85 @@
+<%- include("partials/head", { title, pageStyles: ["/css/pages/register.css"] }) %>
+
+<main class="auth-page">
+  <section class="auth-showcase">
+    <div>
+      <div class="brand-chip">Kuizzosh Studio</div>
+      <h1>Set up your host account and start building engaging live sessions.</h1>
+      <p>Use Kuizzosh to manage quizzes, polls, rankings, and future audience interaction tools from a single dashboard.</p>
+    </div>
+
+    <div class="showcase-stack">
+      <article class="stats-card">
+        <span class="stats-label">Live Events</span>
+        <strong>Quiz, Poll, Ranking</strong>
+        <p>Core modules for interactive sessions and audience participation.</p>
+      </article>
+      <article class="stats-card highlight">
+        <span class="stats-label">Host Control</span>
+        <strong>One Dashboard</strong>
+        <p>Manage your activities, monitor sessions, and expand features later.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="auth-panel">
+    <div class="auth-card">
+      <div class="auth-card-header">
+        <span class="section-pill">Create account</span>
+        <h2>Register for Kuizzosh</h2>
+        <p>Create your host account to access the dashboard.</p>
+      </div>
+
+      <%- include("partials/flash", { error, success }) %>
+
+      <form action="/register" method="post" class="auth-form">
+        <label class="field">
+          <span>Full name</span>
+          <input
+            type="text"
+            name="name"
+            placeholder="Your host name"
+            value="<%= formData.name || '' %>"
+            required
+          />
+        </label>
+
+        <label class="field">
+          <span>Email</span>
+          <input
+            type="email"
+            name="email"
+            placeholder="host@kuizzosh.com"
+            value="<%= formData.email || '' %>"
+            required
+          />
+        </label>
+
+        <label class="field">
+          <span>Password</span>
+          <input type="password" name="password" placeholder="Minimum 8 characters" required />
+        </label>
+
+        <label class="field">
+          <span>Confirm password</span>
+          <input type="password" name="confirmPassword" placeholder="Repeat your password" required />
+        </label>
+
+        <button class="primary-button" type="submit">Create account</button>
+      </form>
+
+      <div class="auth-divider">
+        <span class="auth-divider-line"></span>
+        <span class="auth-divider-label">or</span>
+        <span class="auth-divider-line"></span>
+      </div>
+
+      <p class="switch-text">
+        Already registered?
+        <a href="/login">Login here</a>
+      </p>
+    </div>
+  </section>
+</main>
+
+<%- include("partials/foot") %>

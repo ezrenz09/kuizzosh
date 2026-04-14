@@ -1,0 +1,241 @@
+.dashboard-page {
+  min-height: 100vh;
+  display: block;
+}
+
+.sidebar {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 20;
+  width: 260px;
+  min-height: 100vh;
+  height: 100vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 26px 18px;
+  border-right: 1px solid var(--line);
+  background: #fafaf8;
+  transition: width 0.24s ease, padding 0.24s ease;
+}
+
+.sidebar-top,
+.sidebar-brand,
+.sidebar-toggle,
+.nav-link,
+.account-chip {
+  display: flex;
+  align-items: center;
+}
+
+.sidebar-top {
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.sidebar-brand {
+  gap: 14px;
+  min-width: 0;
+}
+
+.brand-mark,
+.account-avatar,
+.nav-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.brand-mark {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.brand-copy,
+.account-copy {
+  min-width: 0;
+}
+
+.brand-copy strong,
+.account-copy strong {
+  display: block;
+}
+
+.brand-copy span,
+.account-copy span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.sidebar-toggle {
+  width: 38px;
+  height: 38px;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--muted);
+}
+
+.sidebar-toggle svg {
+  width: 18px;
+  height: 18px;
+}
+
+.sidebar-nav {
+  display: grid;
+  gap: 10px;
+  margin: 28px 0;
+}
+
+.nav-link {
+  width: 100%;
+  min-height: 46px;
+  gap: 12px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--ink);
+  text-align: left;
+}
+
+.nav-link.active,
+.nav-link:hover {
+  background: var(--accent-soft);
+}
+
+.nav-link-static {
+  font: inherit;
+}
+
+.nav-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+}
+
+.nav-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.nav-link.active .nav-icon,
+.nav-link:hover .nav-icon {
+  color: var(--ink);
+}
+
+.sidebar-bottom {
+  display: grid;
+  gap: 16px;
+}
+
+.account-chip {
+  gap: 14px;
+  padding: 18px 2px 0;
+  border-top: 1px solid var(--line);
+}
+
+.account-avatar {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--paper-soft);
+  font-weight: 900;
+}
+
+.sidebar-logout {
+  width: auto;
+  min-height: auto;
+  justify-content: flex-start;
+  padding: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+.sidebar-logout:hover {
+  color: var(--ink);
+  transform: none;
+}
+
+.dashboard-main {
+  min-height: 100vh;
+  margin-left: 260px;
+  padding: 32px 36px;
+  display: grid;
+  gap: 22px;
+}
+
+.dashboard-main-clean {
+  min-height: 100vh;
+  align-content: start;
+  gap: 20px;
+}
+
+body.sidebar-collapsed .sidebar {
+  width: 88px;
+  padding-inline: 14px;
+}
+
+body.sidebar-collapsed .dashboard-main {
+  margin-left: 88px;
+}
+
+body.sidebar-collapsed .brand-copy,
+body.sidebar-collapsed .nav-text,
+body.sidebar-collapsed .account-copy,
+body.sidebar-collapsed .sidebar-logout {
+  display: none;
+}
+
+body.sidebar-collapsed .sidebar-brand,
+body.sidebar-collapsed .nav-link,
+body.sidebar-collapsed .account-chip {
+  justify-content: center;
+}
+
+body.sidebar-collapsed .nav-link,
+body.sidebar-collapsed .account-chip {
+  padding-inline: 0;
+}
+
+@media (max-width: 1160px) {
+  .dashboard-page {
+    display: block;
+  }
+
+  .sidebar {
+    position: static;
+    inset: auto;
+    width: auto;
+    height: auto;
+    min-height: auto;
+    overflow: visible;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .dashboard-main {
+    margin-left: 0;
+  }
+
+  body.sidebar-collapsed .sidebar {
+    width: auto;
+    padding-inline: 18px;
+  }
+}
+
+@media (max-width: 760px) {
+  .dashboard-main {
+    padding: 24px 0 0;
+  }
+
+  body.sidebar-collapsed .dashboard-main {
+    margin-left: 0;
+  }
+}

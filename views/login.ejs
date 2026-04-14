@@ -1,0 +1,86 @@
+<%- include("partials/head", { title, pageStyles: ["/css/pages/login.css"] }) %>
+
+<main class="auth-page">
+  <section class="auth-showcase">
+    <div>
+      <div class="brand-chip">Kuizzosh Live</div>
+      <h1>Run live quizzes, polls, and rankings.</h1>
+      <p>Engage participants in real time with simple controls, fast setup, and a clear host experience.</p>
+    </div>
+
+    <div class="showcase-cards">
+      <article class="mini-card">
+        <div class="icon-badge">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 8.5 12 4l6 4.5v7L12 20l-6-4.5Z"></path>
+            <path d="M9 11.5h6"></path>
+            <path d="M9 14.5h4"></path>
+          </svg>
+        </div>
+        <div>
+          <h2>Create Sessions</h2>
+          <p>Prepare quiz rooms, host activities, and manage your live events.</p>
+        </div>
+      </article>
+
+      <article class="mini-card">
+        <div class="icon-badge">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 6h16"></path>
+            <path d="M7 12h10"></path>
+            <path d="M10 18h4"></path>
+          </svg>
+        </div>
+        <div>
+          <h2>Track Activity</h2>
+          <p>Check your modules, host tools, and progress from one place.</p>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section class="auth-panel">
+    <div class="auth-card">
+      <div class="auth-card-header">
+        <span class="section-pill">Welcome back</span>
+        <h2>Login to Kuizzosh</h2>
+        <p>Access your host dashboard below.</p>
+      </div>
+
+      <%- include("partials/flash", { error, success }) %>
+
+      <form action="/login" method="post" class="auth-form">
+        <label class="field">
+          <span>Email</span>
+          <input
+            type="email"
+            name="email"
+            placeholder="host@kuizzosh.com"
+            value="<%= formData.email || '' %>"
+            required
+          />
+        </label>
+
+        <label class="field">
+          <span>Password</span>
+          <input type="password" name="password" placeholder="Minimum 8 characters" required />
+        </label>
+
+        <button class="primary-button" type="submit">Login</button>
+      </form>
+
+      <div class="auth-divider">
+        <span class="auth-divider-line"></span>
+        <span class="auth-divider-label">or</span>
+        <span class="auth-divider-line"></span>
+      </div>
+
+      <p class="switch-text switch-text-tight">
+        No account yet?
+        <a href="/register">Create one here</a>
+      </p>
+    </div>
+  </section>
+</main>
+
+<%- include("partials/foot") %>

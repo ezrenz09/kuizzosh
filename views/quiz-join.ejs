@@ -1,0 +1,127 @@
+<%- include("partials/head", { title, pageStyles: ["/css/pages/quiz-join.css"] }) %>
+
+<main class="quiz-player-page quiz-player-page-join<%= participant ? ' quiz-player-page-live' : '' %>">
+  <% if (!participant) { %>
+    <section class="quiz-player-shell quiz-player-shell-compact quiz-player-entry-shell">
+      <header class="quiz-player-entry-top">
+        <div class="quiz-player-entry-brand">
+          <span class="quiz-player-entry-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8Z"></path>
+            </svg>
+          </span>
+          <div class="quiz-player-entry-brand-copy">
+            <span class="section-pill">Live Quiz Lobby</span>
+            <span class="quiz-player-entry-brand-hint">Join from your device</span>
+          </div>
+        </div>
+
+        <div class="quiz-player-entry-chip-row">
+          <div class="quiz-player-entry-chip quiz-player-entry-chip-joined">
+            <span class="quiz-player-entry-chip-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="3"></circle>
+                <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+              </svg>
+            </span>
+            <span class="quiz-player-entry-chip-copy">
+              <span>Joined</span>
+              <strong data-quiz-join-count-value><%= participantCount || 0 %></strong>
+            </span>
+          </div>
+
+          <div
+            class="quiz-player-entry-chip quiz-player-entry-chip-status <%= joinState === 'lobby' ? 'is-live' : joinState === 'late' ? 'is-late' : 'is-waiting' %>"
+            data-quiz-join-state-chip
+          >
+            <span class="quiz-player-entry-chip-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M3 12h4l2-5 4 10 2-5h6"></path>
+              </svg>
+            </span>
+            <span class="quiz-player-entry-chip-copy">
+              <span>Status</span>
+              <strong data-quiz-join-state-label><%= joinState === 'lobby' ? 'Lobby Open' : joinState === 'late' ? 'Started' : 'Waiting' %></strong>
+            </span>
+          </div>
+        </div>
+      </header>
+
+      <div class="quiz-player-entry-main">
+        <div class="quiz-player-entry-overview">
+          <section class="quiz-player-entry-hero">
+            <h1><%= item.title %></h1>
+            <p>Enter your nickname to join the live room, then wait for the first question to appear.</p>
+          </section>
+
+          <section class="quiz-player-entry-joined">
+            <span class="section-pill">Players Joined</span>
+            <strong data-quiz-join-count-hero><%= participantCount || 0 %></strong>
+            <p data-quiz-join-count-label>
+              <%= Number(participantCount || 0) === 1
+                ? '1 player is already in the room.'
+                : `${Number(participantCount || 0)} players are already in the room.` %>
+            </p>
+          </section>
+        </div>
+
+        <section class="quiz-player-join-card quiz-player-entry-join" data-quiz-join-gate data-join-state="<%= joinState %>" data-session-active="<%= activeSession ? 'true' : 'false' %>">
+          <% if (joinError) { %>
+            <div class="dashboard-inline-flash dashboard-inline-flash-error"><%= joinError %></div>
+          <% } %>
+
+          <div class="quiz-player-entry-join-head">
+            <span class="quiz-player-entry-join-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L10.7 5.22"></path>
+                <path d="M14 11a5 5 0 0 0-7.07 0L4.81 13.12a5 5 0 1 0 7.07 7.07L13.3 18.8"></path>
+              </svg>
+            </span>
+            <div class="quiz-player-join-copy quiz-player-entry-join-copy">
+              <h2 data-quiz-join-heading><%= joinState === 'lobby' ? 'You can join now' : joinState === 'late' ? "Opss, you're late." : 'Waiting for host to start' %></h2>
+              <p data-quiz-join-status-text>
+                <%= joinState === 'lobby'
+                  ? 'The lobby is open. Enter your nickname and jump in.'
+                  : joinState === 'late'
+                    ? 'Join next session! This game is already in progress, so new players cannot enter now.'
+                    : 'This quiz is not live yet. Keep this page open and join as soon as the host starts the room.' %>
+              </p>
+            </div>
+          </div>
+
+          <form action="/quizzes/join/<%= item.quiz_code %>/join" method="post" class="quiz-player-join-form quiz-player-entry-form" data-quiz-join-form <%= joinState === 'late' ? 'hidden' : '' %>>
+            <label class="field quiz-player-entry-field">
+              <span>Nickname</span>
+              <input type="text" name="displayName" maxlength="32" placeholder="Enter your nickname" />
+            </label>
+            <button type="submit" class="primary-button quiz-player-entry-submit" <%= activeSession ? '' : 'disabled' %> data-quiz-join-submit>
+              Join Quiz
+            </button>
+          </form>
+
+          <p class="quiz-player-entry-note" data-quiz-join-note <%= joinState === 'late' ? 'hidden' : '' %>>Use the same nickname you want shown during answer charts and rankings.</p>
+          <p class="quiz-player-entry-late-note" data-quiz-join-late-note <%= joinState === 'late' ? '' : 'hidden' %>>Opss, you're late. Join next session!</p>
+        </section>
+      </div>
+    </section>
+  <% } else { %>
+    <section
+      class="quiz-player-shell quiz-player-shell-live"
+      data-quiz-live-player
+      data-state-url="/api/quizzes/join/<%= item.quiz_code %>/state"
+      data-answer-url="/api/quizzes/join/<%= item.quiz_code %>/answer"
+    >
+      <script type="application/json" data-quiz-live-player-data><%- serializedLiveSnapshot %></script>
+      <div class="quiz-player-identity">
+        <span>Playing as</span>
+        <strong><%= participant.display_name %></strong>
+      </div>
+    </section>
+  <% } %>
+</main>
+
+<script src="/js/quiz-live-audio.js"></script>
+<script src="/js/quiz-live-player.js"></script>
+<%- include("partials/foot") %>

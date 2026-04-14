@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Debug Live Flow 1775415385739 | Kuizzosh</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+
+
+<main class="quiz-player-page">
+  
+    <section class="quiz-player-shell quiz-player-shell-compact">
+      <header class="quiz-player-hero">
+        <span class="section-pill">Live Quiz Lobby</span>
+        <h1>Debug Live Flow 1775415385739</h1>
+        <p>Join with your nickname, then wait for the question to appear.</p>
+      </header>
+
+      <section class="quiz-player-code-card">
+        <span>Quiz Code</span>
+        <strong>276878</strong>
+      </section>
+
+      
+
+      <section class="quiz-player-join-card" data-quiz-join-gate data-session-active="true">
+        <div class="quiz-player-join-copy">
+          <h2>You can join now</h2>
+          <p data-quiz-join-status-text>
+            The lobby is open. Enter your nickname and jump in.
+          </p>
+        </div>
+
+        <form action="/quizzes/join/276878/join" method="post" class="quiz-player-join-form">
+          <label class="field">
+            <span>Nickname</span>
+            <input type="text" name="displayName" maxlength="32" placeholder="Enter your nickname" />
+          </label>
+          <button type="submit" class="primary-button"  data-quiz-join-submit>
+            Join Quiz
+          </button>
+        </form>
+      </section>
+    </section>
+  
+</main>
+
+<script src="/js/quiz-live-player.js"></script>
+    <script src="/js/app.js"></script>
+  </body>
+</html>
+

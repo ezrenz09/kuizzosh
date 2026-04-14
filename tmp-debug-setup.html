@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Debug Live Flow 1775415385739 Setup | Kuizzosh</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+
+
+<main class="dashboard-page">
+  <aside class="sidebar" data-sidebar>
+  <div class="sidebar-top">
+    <a href="/dashboard" class="sidebar-brand">
+      <span class="brand-mark">K</span>
+      <div class="brand-copy">
+        <strong>Kuizzosh</strong>
+        <span>Host Console</span>
+      </div>
+    </a>
+    <button class="sidebar-toggle" type="button" data-sidebar-toggle aria-label="Toggle sidebar">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 7h16"></path>
+        <path d="M4 12h16"></path>
+        <path d="M4 17h10"></path>
+      </svg>
+    </button>
+  </div>
+
+  <nav class="sidebar-nav">
+    <a href="/dashboard" class="nav-link ">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 11 12 4l8 7"></path>
+          <path d="M6 10.5V20h12v-9.5"></path>
+        </svg>
+      </span>
+      <span class="nav-text">Kuizzosh</span>
+    </a>
+    <a href="/quizzes" class="nav-link active">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M6 8.5 12 4l6 4.5v7L12 20l-6-4.5Z"></path>
+          <path d="M9 11.5h6"></path>
+          <path d="M9 14.5h4"></path>
+        </svg>
+      </span>
+      <span class="nav-text">Quizzes</span>
+    </a>
+    <a href="/polls" class="nav-link ">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 4v16"></path>
+          <path d="M5 9h14"></path>
+          <path d="M5 15h9"></path>
+        </svg>
+      </span>
+      <span class="nav-text">Polls</span>
+    </a>
+    <a href="/rankings" class="nav-link ">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M5 19h14"></path>
+          <path d="M7 15 10 9l3 4 4-7"></path>
+        </svg>
+      </span>
+      <span class="nav-text">Rankings</span>
+    </a>
+  </nav>
+
+  <div class="sidebar-bottom">
+    <div class="account-chip">
+      <div class="account-avatar">D</div>
+      <div class="account-copy">
+        <strong>Debug Live</strong>
+        <span>debuglive_1775415385724@example.com</span>
+      </div>
+    </div>
+
+    <form action="/logout" method="post">
+      <button class="secondary-button sidebar-logout" type="submit">Logout</button>
+    </form>
+  </div>
+</aside>
+
+
+  <section class="dashboard-main dashboard-main-clean quiz-setup-page">
+    <div class="setup-backbar">
+      <a href="/quizzes" class="setup-backlink">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M15 6 9 12l6 6"></path>
+        </svg>
+        <span>Back to Quizzes</span>
+      </a>
+    </div>
+
+    
+    
+
+    <form
+      action="/quizzes/26/setup"
+      method="post"
+      class="quiz-builder-form"
+      data-quiz-builder
+      data-quiz-id="26"
+      data-quiz-start-url="/quizzes/26/start"
+      data-initial-section-index="0"
+      data-initial-question-index="0"
+    >
+      <input type="hidden" name="builderState" data-builder-state-input />
+      <input type="hidden" name="activeSectionIndex" data-active-section-input />
+      <input type="hidden" name="activeQuestionIndex" data-active-question-input />
+
+      <section class="setup-hero setup-hero-compact">
+        <div class="setup-hero-copy">
+          <span class="section-pill">Quiz Setup</span>
+          <h1>Debug Live Flow 1775415385739</h1>
+          <div class="setup-chip-row">
+            <div class="setup-chip-list">
+              <span class="visibility-badge visibility-badge-public">
+                Public
+              </span>
+              <span class="status-badge status-badge-active">
+                Active
+              </span>
+              <span class="setup-meta-pill">
+                <span>Quiz Code</span>
+                <strong>276878</strong>
+              </span>
+              <span class="setup-meta-pill">
+                <span>Duration</span>
+                <strong>Apr 6</strong>
+              </span>
+            </div>
+            <button
+              type="button"
+              class="setup-settings-trigger"
+              data-open-quiz-settings
+              aria-haspopup="dialog"
+              aria-controls="quiz-settings-modal"
+              aria-label="Open quiz settings"
+              title="Quiz settings"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M21 6h-6"></path>
+                <path d="M9 6H3"></path>
+                <path d="M21 12h-10"></path>
+                <path d="M5 12H3"></path>
+                <path d="M21 18h-4"></path>
+                <path d="M11 18H3"></path>
+                <circle cx="12" cy="6" r="3"></circle>
+                <circle cx="8" cy="12" r="3"></circle>
+                <circle cx="14" cy="18" r="3"></circle>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="quiz-builder-top-actions">
+          <a href="/quizzes" class="secondary-button">Back</a>
+          <button type="submit" class="primary-button">Save Quiz</button>
+        </div>
+      </section>
+
+      <section class="quiz-builder-layout">
+        <aside class="quiz-builder-outline">
+          <div class="quiz-builder-outline-header">
+            <div>
+              <h2>Sections</h2>
+              <p>Organize the quiz flow.</p>
+            </div>
+            <button
+              type="button"
+              class="quiz-outline-add-button"
+              data-add-section
+              aria-label="Add section"
+              title="Add section"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 5v14"></path>
+                <path d="M5 12h14"></path>
+              </svg>
+            </button>
+          </div>
+          <div class="quiz-section-nav" data-section-nav></div>
+        </aside>
+
+        <div class="quiz-builder-canvas">
+          <div class="quiz-section-panels" data-section-panels></div>
+        </div>
+      </section>
+
+      <div class="quiz-builder-footer">
+        <div class="quiz-builder-footer-copy">
+          <strong>Leaderboard quiz prototype</strong>
+          <span>Sections, questions, correct choices, timers, and live quiz settings are all saved into SQL.</span>
+        </div>
+        <div class="quiz-builder-footer-actions">
+          <a href="/quizzes/26/start" class="secondary-button quiz-builder-footer-play">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m10 8 6 4-6 4Z"></path>
+            </svg>
+            <span>Play</span>
+          </a>
+          <button type="submit" class="primary-button">Save Quiz</button>
+        </div>
+      </div>
+
+      <div
+        id="quiz-settings-modal"
+        class="modal-overlay"
+        data-quiz-settings-modal
+        aria-hidden="true"
+      >
+        <button type="button" class="modal-backdrop" data-close-quiz-settings aria-label="Close settings"></button>
+
+        <section class="modal-panel quiz-settings-panel" role="dialog" aria-modal="true" aria-labelledby="quiz-settings-title">
+          <div class="modal-header">
+            <div>
+              <h2 id="quiz-settings-title">Leaderboard Settings</h2>
+              <p>Control how the live quiz reveals rankings, answers, and randomization.</p>
+            </div>
+            <button type="button" class="modal-close" data-close-quiz-settings aria-label="Close settings">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M6 6 18 18"></path>
+                <path d="M18 6 6 18"></path>
+              </svg>
+            </button>
+          </div>
+
+          <div class="quiz-settings-list">
+            <label class="quiz-setting-item">
+              <span class="quiz-setting-copy">
+                <strong>Leaderboard</strong>
+                <span>Rank participants by correct answers first, then fastest correct answer time.</span>
+              </span>
+              <span class="quiz-setting-switch">
+                <input type="checkbox" name="leaderboardEnabled" checked />
+                <span class="quiz-setting-slider" aria-hidden="true"></span>
+              </span>
+            </label>
+
+            <label class="quiz-setting-item">
+              <span class="quiz-setting-copy">
+                <strong>Reveal Correct Answer</strong>
+                <span>Show the correct answer immediately after each question.</span>
+              </span>
+              <span class="quiz-setting-switch">
+                <input type="checkbox" name="showCorrectAnswer" checked />
+                <span class="quiz-setting-slider" aria-hidden="true"></span>
+              </span>
+            </label>
+
+            <label class="quiz-setting-item">
+              <span class="quiz-setting-copy">
+                <strong>Shuffle Questions</strong>
+                <span>Randomize the order of quiz questions for participants.</span>
+              </span>
+              <span class="quiz-setting-switch">
+                <input type="checkbox" name="randomizeQuestions"  />
+                <span class="quiz-setting-slider" aria-hidden="true"></span>
+              </span>
+            </label>
+
+            <label class="quiz-setting-item">
+              <span class="quiz-setting-copy">
+                <strong>Shuffle Choices</strong>
+                <span>Randomize the answer choices shown on each question.</span>
+              </span>
+              <span class="quiz-setting-switch">
+                <input type="checkbox" name="randomizeChoices"  />
+                <span class="quiz-setting-slider" aria-hidden="true"></span>
+              </span>
+            </label>
+          </div>
+
+          <div class="modal-actions">
+            <button type="button" class="secondary-button" data-close-quiz-settings>Done</button>
+          </div>
+        </section>
+      </div>
+    </form>
+
+    <form id="quiz-live-reset-form" action="/quizzes/26/live/reset" method="post"></form>
+  </section>
+</main>
+
+<script type="application/json" data-quiz-builder-data>{"sections":[{"title":"Section 1","questions":[{"prompt":"","questionType":"single_choice","points":100,"timeLimit":20,"showLeaderboard":false,"choices":[{"label":"Option 1","isCorrect":true},{"label":"Option 2","isCorrect":false},{"label":"Option 3","isCorrect":false},{"label":"Option 4","isCorrect":false}]}]}]}</script>
+<script src="/js/quiz-builder.js"></script>
+    <script src="/js/app.js"></script>
+  </body>
+</html>
+

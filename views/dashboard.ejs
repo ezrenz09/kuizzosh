@@ -1,0 +1,325 @@
+<%- include("partials/head", { title, pageStyles: ["/css/pages/dashboard.css"] }) %>
+
+<main class="dashboard-page">
+  <%- include("partials/sidebar", { user, currentPath }) %>
+
+  <section class="dashboard-main dashboard-main-clean">
+    <% if (dashboardSuccess) { %>
+      <div class="dashboard-inline-flash dashboard-inline-flash-success"><%= dashboardSuccess %></div>
+    <% } %>
+    <% if (dashboardError) { %>
+      <div class="dashboard-inline-flash dashboard-inline-flash-error"><%= dashboardError %></div>
+    <% } %>
+
+    <% if (!kuizzoshItems.length) { %>
+      <section class="module-create-stage">
+        <button
+          type="button"
+          class="module-create-box"
+          data-open-create-modal
+          aria-haspopup="dialog"
+          aria-controls="create-kuizzosh-modal"
+        >
+          <span class="module-create-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M6 5h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 3V7a2 2 0 0 1 2-2Z"></path>
+              <path d="M9 10h6"></path>
+              <path d="M9 14h4"></path>
+            </svg>
+          </span>
+          <h2>Create New Kuizzosh!</h2>
+          <p>Create a new Kuizzosh directly from this page.</p>
+        </button>
+      </section>
+    <% } else { %>
+      <section class="kuizzosh-table-section">
+        <div class="section-heading">
+          <div class="section-heading-main">
+            <h2>Kuizzosh List</h2>
+            <p>Your created Kuizzosh sessions will appear here.</p>
+          </div>
+          <button
+            type="button"
+            class="table-add-button"
+            data-open-create-modal
+            aria-haspopup="dialog"
+            aria-controls="create-kuizzosh-modal"
+            aria-label="Create new Kuizzosh"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 5v14"></path>
+              <path d="M5 12h14"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div class="table-shell">
+          <table class="kuizzosh-table">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Duration</th>
+                <th>Owner</th>
+                <th>Visibility</th>
+                <th>Status</th>
+                <th class="actions-header">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% kuizzoshItems.forEach((item) => { %>
+                <tr class="kuizzosh-main-row">
+                  <td><strong><%= item.title %></strong></td>
+                  <td><%= item.duration_label %></td>
+                  <td><%= item.owner_name %></td>
+                  <td>
+                    <span class="visibility-badge visibility-badge-<%= item.visibility %>">
+                      <%= item.visibility.charAt(0).toUpperCase() + item.visibility.slice(1) %>
+                    </span>
+                  </td>
+                  <td>
+                    <span class="status-badge status-badge-<%= item.status %>">
+                      <%= item.status.charAt(0).toUpperCase() + item.status.slice(1) %>
+                    </span>
+                  </td>
+                  <td class="actions-cell">
+                    <button
+                      type="button"
+                      class="row-action-toggle"
+                      data-row-action-toggle
+                      data-target-id="kuizzosh-detail-<%= item.id %>"
+                      aria-expanded="false"
+                      aria-controls="kuizzosh-detail-<%= item.id %>"
+                      aria-label="More details"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="5" cy="12" r="1.5"></circle>
+                        <circle cx="12" cy="12" r="1.5"></circle>
+                        <circle cx="19" cy="12" r="1.5"></circle>
+                      </svg>
+                    </button>
+                  </td>
+                </tr>
+                <tr
+                  id="kuizzosh-detail-<%= item.id %>"
+                  class="kuizzosh-detail-row"
+                  data-detail-row
+                  hidden
+                >
+                  <td colspan="6">
+                    <div class="kuizzosh-detail-panel" data-detail-panel>
+                      <button
+                        type="button"
+                        class="detail-mini-action"
+                        data-copy-link="/join/<%= item.quiz_code %>"
+                        aria-label="Copy Kuizzosh link"
+                        title="Copy Kuizzosh link"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <rect x="8" y="4" width="8" height="16" rx="2"></rect>
+                          <path d="M11 7h2"></path>
+                          <path d="M10 17h4"></path>
+                        </svg>
+                        <span>Link</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        class="detail-mini-action"
+                        data-copy-code="<%= item.quiz_code %>"
+                        aria-label="Copy Kuizzosh code"
+                        title="Copy Kuizzosh code"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M9 4 7 20"></path>
+                          <path d="M17 4 15 20"></path>
+                          <path d="M4 9h16"></path>
+                          <path d="M3 15h16"></path>
+                        </svg>
+                        <span>Code</span>
+                      </button>
+
+                      <div class="detail-code-inline">
+                        <span class="detail-code-inline-label">Quiz Code</span>
+                        <strong class="detail-code-inline-value"><%= item.quiz_code %></strong>
+                      </div>
+
+                      <form action="/kuizzosh/<%= item.id %>/duplicate" method="post" class="detail-inline-form">
+                        <button type="submit" class="detail-mini-action">
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <rect x="8" y="8" width="10" height="10" rx="2"></rect>
+                            <rect x="5" y="5" width="10" height="10" rx="2"></rect>
+                          </svg>
+                          <span>Duplicate</span>
+                        </button>
+                      </form>
+
+                      <div class="detail-inline-actions">
+                        <button
+                          type="button"
+                          class="detail-inline-action"
+                          data-open-transfer-modal
+                          data-transfer-id="<%= item.id %>"
+                          data-transfer-title="<%= item.title %>"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M7 8h10"></path>
+                            <path d="m13 4 4 4-4 4"></path>
+                            <path d="M17 16H7"></path>
+                            <path d="m11 12-4 4 4 4"></path>
+                          </svg>
+                          <span>Transfer</span>
+                        </button>
+                      </div>
+
+                      <form action="/kuizzosh/<%= item.id %>/delete" method="post" class="detail-inline-form">
+                        <button type="submit" class="detail-inline-action detail-inline-action-delete">
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 7h16"></path>
+                            <path d="M10 11v6"></path>
+                            <path d="M14 11v6"></path>
+                            <path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"></path>
+                            <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+                          </svg>
+                          Delete
+                        </button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    <% } %>
+  </section>
+</main>
+
+<div
+  id="create-kuizzosh-modal"
+  class="modal-overlay <%= openCreateModal ? 'is-open' : '' %>"
+  data-create-modal
+  data-open="<%= openCreateModal ? 'true' : 'false' %>"
+  aria-hidden="<%= openCreateModal ? 'false' : 'true' %>"
+>
+  <button type="button" class="modal-backdrop" data-close-create-modal aria-label="Close popup"></button>
+
+  <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="create-kuizzosh-title">
+    <div class="modal-header">
+      <div>
+        <h2 id="create-kuizzosh-title">Create New Kuizzosh</h2>
+        <p>Set the title, date range, and visibility for your new session.</p>
+      </div>
+      <button type="button" class="modal-close" data-close-create-modal aria-label="Close popup">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M6 6 18 18"></path>
+          <path d="M18 6 6 18"></path>
+        </svg>
+      </button>
+    </div>
+
+    <% if (dashboardError) { %>
+      <div class="flash flash-error modal-flash"><%= dashboardError %></div>
+    <% } %>
+
+    <form action="/kuizzosh/create" method="post" class="create-kuizzosh-form">
+      <label class="field">
+        <span>Title</span>
+        <input
+          type="text"
+          name="title"
+          maxlength="120"
+          placeholder="Weekly team quiz"
+          value="<%= createFormData.title %>"
+          required
+        />
+      </label>
+
+      <div class="form-split">
+        <label class="field">
+          <span>Start date</span>
+          <input type="date" name="startDate" value="<%= createFormData.startDate %>" required />
+        </label>
+
+        <label class="field">
+          <span>End date</span>
+          <input type="date" name="endDate" value="<%= createFormData.endDate %>" required />
+        </label>
+      </div>
+
+      <fieldset class="visibility-fieldset">
+        <legend>Visibility</legend>
+        <div class="visibility-options">
+          <label class="visibility-option">
+            <input
+              type="radio"
+              name="visibility"
+              value="private"
+              <%= createFormData.visibility !== 'public' ? 'checked' : '' %>
+            />
+            <span>Private</span>
+          </label>
+
+          <label class="visibility-option">
+            <input
+              type="radio"
+              name="visibility"
+              value="public"
+              <%= createFormData.visibility === 'public' ? 'checked' : '' %>
+            />
+            <span>Public</span>
+          </label>
+        </div>
+      </fieldset>
+
+      <div class="modal-actions">
+        <button type="button" class="secondary-button" data-close-create-modal>Discard</button>
+        <button type="submit" class="primary-button">Create</button>
+      </div>
+    </form>
+  </section>
+</div>
+
+<div
+  id="transfer-kuizzosh-modal"
+  class="modal-overlay"
+  data-transfer-modal
+  aria-hidden="true"
+>
+  <button type="button" class="modal-backdrop" data-close-transfer-modal aria-label="Close popup"></button>
+
+  <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="transfer-kuizzosh-title">
+    <div class="modal-header">
+      <div>
+        <h2 id="transfer-kuizzosh-title">Transfer Kuizzosh</h2>
+        <p>Move this Kuizzosh to another registered account by email.</p>
+      </div>
+      <button type="button" class="modal-close" data-close-transfer-modal aria-label="Close popup">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M6 6 18 18"></path>
+          <path d="M18 6 6 18"></path>
+        </svg>
+      </button>
+    </div>
+
+    <form action="" method="post" class="create-kuizzosh-form" data-transfer-form>
+      <label class="field">
+        <span>Recipient email</span>
+        <input
+          type="email"
+          name="recipientEmail"
+          placeholder="owner@example.com"
+          data-transfer-email
+          required
+        />
+      </label>
+
+      <div class="modal-actions">
+        <button type="button" class="secondary-button" data-close-transfer-modal>Cancel</button>
+        <button type="submit" class="primary-button">Transfer</button>
+      </div>
+    </form>
+  </section>
+</div>
+
+<%- include("partials/foot") %>

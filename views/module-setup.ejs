@@ -1,0 +1,50 @@
+<%- include("partials/head", { title, pageStyles: ["/css/pages/module-setup.css"] }) %>
+
+<main class="dashboard-page">
+  <%- include("partials/sidebar", { user, currentPath }) %>
+
+  <section class="dashboard-main dashboard-main-clean">
+    <div class="setup-backbar">
+      <a href="/<%= pageKey %>" class="setup-backlink">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M15 6 9 12l6 6"></path>
+        </svg>
+        <span>Back to <%= pageTitle %></span>
+      </a>
+    </div>
+
+    <section class="setup-hero">
+      <div class="setup-hero-copy">
+        <span class="section-pill"><%= singular %> Setup</span>
+        <h1><%= item.title %></h1>
+        <p>Use this workspace to review the current <%= singular.toLowerCase() %> details before the full builder is added.</p>
+      </div>
+    </section>
+
+    <section class="setup-summary-grid">
+      <article class="setup-summary-card">
+        <span>Duration</span>
+        <strong><%= item.duration_label %></strong>
+      </article>
+      <article class="setup-summary-card">
+        <span>Visibility</span>
+        <strong><%= item.visibility.charAt(0).toUpperCase() + item.visibility.slice(1) %></strong>
+      </article>
+      <article class="setup-summary-card">
+        <span>Status</span>
+        <strong class="setup-status-text setup-status-text-<%= item.status %>"><%= item.status.charAt(0).toUpperCase() + item.status.slice(1) %></strong>
+      </article>
+      <article class="setup-summary-card">
+        <span>Owner</span>
+        <strong><%= item.owner_name %></strong>
+      </article>
+    </section>
+
+    <section class="setup-placeholder-card">
+      <h2><%= singular %> Workspace</h2>
+      <p>This setup page is ready for navigation and overview. The full builder for <%= pageTitle.toLowerCase() %> is the next build step.</p>
+    </section>
+  </section>
+</main>
+
+<%- include("partials/foot") %>

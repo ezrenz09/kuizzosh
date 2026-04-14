@@ -1,0 +1,52 @@
+<%- include("partials/head", { title, pageStyles: ["/css/pages/quiz-start.css"] }) %>
+
+<main class="dashboard-page">
+  <%- include("partials/sidebar", { user, currentPath }) %>
+
+  <section class="dashboard-main dashboard-main-clean quiz-live-host-page">
+    <div class="setup-backbar">
+      <a href="/quizzes/<%= item.id %>/setup" class="setup-backlink">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M15 6 9 12l6 6"></path>
+        </svg>
+        <span>Back to Quiz Setup</span>
+      </a>
+    </div>
+
+    <section class="quiz-live-host-hero">
+      <div class="quiz-live-host-copy">
+        <span class="section-pill">Live Quiz Room</span>
+        <h1><%= item.title %></h1>
+        <p>Kahoot-style host screen with a real lobby, participants, question flow, and explicit end session.</p>
+      </div>
+
+      <div class="quiz-live-host-hero-actions">
+        <a href="/quizzes/<%= item.id %>/present" class="secondary-button" target="_blank" rel="noreferrer">Present Mode</a>
+      </div>
+    </section>
+
+    <% if (!canGoLive) { %>
+      <section class="quiz-live-empty-card">
+        <h2>Save this quiz before going live</h2>
+        <p>The live session needs saved quiz questions in SQL first. Save the quiz setup, then open Play again.</p>
+        <div class="quiz-live-empty-actions">
+          <a href="/quizzes/<%= item.id %>/setup" class="primary-button">Back to Setup</a>
+        </div>
+      </section>
+    <% } else { %>
+      <section
+        class="quiz-live-host-shell"
+        data-quiz-live-host
+        data-state-url="/api/quizzes/<%= item.id %>/live/<%= initialSnapshot.sessionId %>"
+        data-advance-url="/api/quizzes/<%= item.id %>/live/<%= initialSnapshot.sessionId %>/advance"
+        data-end-url="/api/quizzes/<%= item.id %>/live/<%= initialSnapshot.sessionId %>/end"
+        data-restart-url="/quizzes/<%= item.id %>/start"
+      >
+        <script type="application/json" data-quiz-live-host-data><%- serializedLiveSnapshot %></script>
+      </section>
+    <% } %>
+  </section>
+</main>
+
+<script src="/js/quiz-live-host.js"></script>
+<%- include("partials/foot") %>

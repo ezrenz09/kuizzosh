@@ -1,0 +1,467 @@
+<%- include("partials/head", { title, pageStyles: ["/css/pages/module-page.css"] }) %>
+
+<main class="dashboard-page">
+  <%- include("partials/sidebar", { user, currentPath }) %>
+
+  <section class="dashboard-main dashboard-main-clean">
+    <% if (flashSuccess) { %>
+      <div class="dashboard-inline-flash dashboard-inline-flash-success"><%= flashSuccess %></div>
+    <% } %>
+    <% if (flashError) { %>
+      <div class="dashboard-inline-flash dashboard-inline-flash-error"><%= flashError %></div>
+    <% } %>
+
+    <% if (!items.length) { %>
+      <section class="module-empty-state">
+        <% if (pageKey === "polls") { %>
+          <div class="module-empty-header">
+            <h2><%= pageTitle %></h2>
+            <p><%= pageDescription %></p>
+          </div>
+        <% } %>
+
+        <div class="module-create-stage">
+          <button
+            type="button"
+            class="module-create-box"
+            data-open-create-modal
+            aria-haspopup="dialog"
+            aria-controls="create-module-modal"
+          >
+            <span class="module-create-icon" aria-hidden="true">
+              <% if (pageKey === "quizzes") { %>
+                <svg viewBox="0 0 24 24">
+                  <path d="M6 8.5 12 4l6 4.5v7L12 20l-6-4.5Z"></path>
+                  <path d="M9 11.5h6"></path>
+                  <path d="M9 14.5h4"></path>
+                </svg>
+              <% } else if (pageKey === "polls") { %>
+                <svg viewBox="0 0 24 24">
+                  <path d="M12 4v16"></path>
+                  <path d="M5 9h14"></path>
+                  <path d="M5 15h9"></path>
+                </svg>
+              <% } else { %>
+                <svg viewBox="0 0 24 24">
+                  <path d="M5 19h14"></path>
+                  <path d="M7 15 10 9l3 4 4-7"></path>
+                </svg>
+              <% } %>
+            </span>
+            <h2>Create New <%= singular %>!</h2>
+            <p>Create a <%= singular.toLowerCase() %> directly from this page.</p>
+          </button>
+        </div>
+      </section>
+    <% } else { %>
+      <section class="module-list-section">
+        <div class="section-heading">
+          <div class="section-heading-main">
+            <h2><%= pageTitle %> List</h2>
+            <p>Your created <%= pageTitle.toLowerCase() %> will appear here.</p>
+          </div>
+          <div class="section-heading-actions">
+            <div
+              class="module-view-toggle"
+              role="group"
+              aria-label="Change <%= singular.toLowerCase() %> view"
+              data-view-switcher
+              data-storage-key="kuizzosh-<%= pageKey %>-view"
+              data-default-view="grid"
+            >
+              <button
+                type="button"
+                class="module-view-button is-active"
+                data-view-button
+                data-view-target="grid"
+                aria-pressed="true"
+                aria-label="Grid view"
+                title="Grid view"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="4" y="4" width="6" height="6" rx="1.5"></rect>
+                  <rect x="14" y="4" width="6" height="6" rx="1.5"></rect>
+                  <rect x="4" y="14" width="6" height="6" rx="1.5"></rect>
+                  <rect x="14" y="14" width="6" height="6" rx="1.5"></rect>
+                </svg>
+              </button>
+              <button
+                type="button"
+                class="module-view-button"
+                data-view-button
+                data-view-target="table"
+                aria-pressed="false"
+                aria-label="Table view"
+                title="Table view"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 7h16"></path>
+                  <path d="M4 12h16"></path>
+                  <path d="M4 17h16"></path>
+                </svg>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              class="table-add-button"
+              data-open-create-modal
+              aria-haspopup="dialog"
+              aria-controls="create-module-modal"
+              aria-label="Create new <%= singular %>"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 5v14"></path>
+                <path d="M5 12h14"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <section class="quiz-grid-view" data-view-panel="grid">
+          <div class="quiz-card-grid">
+            <% items.forEach((item) => { %>
+              <article
+                class="quiz-card module-item-linkable"
+                data-item-url="/<%= pageKey %>/<%= item.id %>/setup"
+                tabindex="0"
+                role="link"
+              >
+                <div class="quiz-card-header">
+                  <div class="quiz-card-title-wrap">
+                    <h3><%= item.title %></h3>
+                    <span class="status-badge status-badge-<%= item.status %>">
+                      <%= item.status.charAt(0).toUpperCase() + item.status.slice(1) %>
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    class="row-action-toggle"
+                    data-row-action-toggle
+                    data-target-id="module-card-detail-<%= pageKey %>-<%= item.id %>"
+                    aria-expanded="false"
+                    aria-controls="module-card-detail-<%= pageKey %>-<%= item.id %>"
+                    aria-label="More details"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <circle cx="5" cy="12" r="1.5"></circle>
+                      <circle cx="12" cy="12" r="1.5"></circle>
+                      <circle cx="19" cy="12" r="1.5"></circle>
+                    </svg>
+                  </button>
+                </div>
+
+                <dl class="quiz-card-meta">
+                  <div>
+                    <dt>Duration</dt>
+                    <dd><%= item.duration_label %></dd>
+                  </div>
+                  <div>
+                    <dt>Owner</dt>
+                    <dd><%= item.owner_name %></dd>
+                  </div>
+                  <div>
+                    <dt>Visibility</dt>
+                    <dd>
+                      <span class="visibility-badge visibility-badge-<%= item.visibility %>">
+                        <%= item.visibility.charAt(0).toUpperCase() + item.visibility.slice(1) %>
+                      </span>
+                    </dd>
+                  </div>
+                </dl>
+
+                <div
+                  id="module-card-detail-<%= pageKey %>-<%= item.id %>"
+                  class="quiz-card-actions"
+                  data-detail-row
+                  hidden
+                >
+                  <div class="kuizzosh-detail-panel" data-detail-panel>
+                    <% if (pageKey === "quizzes") { %>
+                      <button
+                        type="button"
+                        class="detail-mini-action"
+                        data-copy-link="/quizzes/join/<%= item.quiz_code %>"
+                        aria-label="Copy quiz link"
+                        title="Copy quiz link"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <rect x="8" y="4" width="8" height="16" rx="2"></rect>
+                          <path d="M11 7h2"></path>
+                          <path d="M10 17h4"></path>
+                        </svg>
+                        <span>Link</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        class="detail-mini-action"
+                        data-copy-code="<%= item.quiz_code %>"
+                        aria-label="Copy quiz code"
+                        title="Copy quiz code"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M9 4 7 20"></path>
+                          <path d="M17 4 15 20"></path>
+                          <path d="M4 9h16"></path>
+                          <path d="M3 15h16"></path>
+                        </svg>
+                        <span>Code</span>
+                      </button>
+
+                      <div class="detail-code-inline">
+                        <span class="detail-code-inline-label">Quiz Code</span>
+                        <strong class="detail-code-inline-value"><%= item.quiz_code %></strong>
+                      </div>
+                    <% } %>
+
+                    <form action="/<%= pageKey %>/<%= item.id %>/duplicate" method="post" class="detail-inline-form">
+                      <button type="submit" class="detail-mini-action">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <rect x="8" y="8" width="10" height="10" rx="2"></rect>
+                          <rect x="5" y="5" width="10" height="10" rx="2"></rect>
+                        </svg>
+                        <span>Duplicate</span>
+                      </button>
+                    </form>
+
+                    <form action="/<%= pageKey %>/<%= item.id %>/delete" method="post" class="detail-inline-form">
+                      <button type="submit" class="detail-inline-action detail-inline-action-delete">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 7h16"></path>
+                          <path d="M10 11v6"></path>
+                          <path d="M14 11v6"></path>
+                          <path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"></path>
+                          <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+                        </svg>
+                        Delete
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              </article>
+            <% }) %>
+          </div>
+        </section>
+
+        <div
+          class="table-shell"
+          data-view-panel="table"
+          hidden
+        >
+          <table class="kuizzosh-table">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Duration</th>
+                <th>Owner</th>
+                <th>Visibility</th>
+                <th>Status</th>
+                <th class="actions-header">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% items.forEach((item) => { %>
+                <tr
+                  class="kuizzosh-main-row module-item-linkable"
+                  data-item-url="/<%= pageKey %>/<%= item.id %>/setup"
+                  tabindex="0"
+                  role="link"
+                >
+                  <td><strong><%= item.title %></strong></td>
+                  <td><%= item.duration_label %></td>
+                  <td><%= item.owner_name %></td>
+                  <td>
+                    <span class="visibility-badge visibility-badge-<%= item.visibility %>">
+                      <%= item.visibility.charAt(0).toUpperCase() + item.visibility.slice(1) %>
+                    </span>
+                  </td>
+                  <td>
+                    <span class="status-badge status-badge-<%= item.status %>">
+                      <%= item.status.charAt(0).toUpperCase() + item.status.slice(1) %>
+                    </span>
+                  </td>
+                  <td class="actions-cell">
+                    <button
+                      type="button"
+                      class="row-action-toggle"
+                      data-row-action-toggle
+                      data-target-id="<%= pageKey %>-detail-<%= item.id %>"
+                      aria-expanded="false"
+                      aria-controls="<%= pageKey %>-detail-<%= item.id %>"
+                      aria-label="More details"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="5" cy="12" r="1.5"></circle>
+                        <circle cx="12" cy="12" r="1.5"></circle>
+                        <circle cx="19" cy="12" r="1.5"></circle>
+                      </svg>
+                    </button>
+                  </td>
+                </tr>
+                <tr
+                  id="<%= pageKey %>-detail-<%= item.id %>"
+                  class="kuizzosh-detail-row"
+                  data-detail-row
+                  hidden
+                >
+                  <td colspan="6">
+                    <div class="kuizzosh-detail-panel" data-detail-panel>
+                      <% if (pageKey === "quizzes") { %>
+                        <button
+                          type="button"
+                          class="detail-mini-action"
+                          data-copy-link="/quizzes/join/<%= item.quiz_code %>"
+                          aria-label="Copy quiz link"
+                          title="Copy quiz link"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <rect x="8" y="4" width="8" height="16" rx="2"></rect>
+                            <path d="M11 7h2"></path>
+                            <path d="M10 17h4"></path>
+                          </svg>
+                          <span>Link</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          class="detail-mini-action"
+                          data-copy-code="<%= item.quiz_code %>"
+                          aria-label="Copy quiz code"
+                          title="Copy quiz code"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M9 4 7 20"></path>
+                            <path d="M17 4 15 20"></path>
+                            <path d="M4 9h16"></path>
+                            <path d="M3 15h16"></path>
+                          </svg>
+                          <span>Code</span>
+                        </button>
+
+                        <div class="detail-code-inline">
+                          <span class="detail-code-inline-label">Quiz Code</span>
+                          <strong class="detail-code-inline-value"><%= item.quiz_code %></strong>
+                        </div>
+                      <% } %>
+
+                      <form action="/<%= pageKey %>/<%= item.id %>/duplicate" method="post" class="detail-inline-form">
+                        <button type="submit" class="detail-mini-action">
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <rect x="8" y="8" width="10" height="10" rx="2"></rect>
+                            <rect x="5" y="5" width="10" height="10" rx="2"></rect>
+                          </svg>
+                          <span>Duplicate</span>
+                        </button>
+                      </form>
+
+                      <form action="/<%= pageKey %>/<%= item.id %>/delete" method="post" class="detail-inline-form">
+                        <button type="submit" class="detail-inline-action detail-inline-action-delete">
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 7h16"></path>
+                            <path d="M10 11v6"></path>
+                            <path d="M14 11v6"></path>
+                            <path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"></path>
+                            <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+                          </svg>
+                          Delete
+                        </button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    <% } %>
+  </section>
+</main>
+
+<div
+  id="create-module-modal"
+  class="modal-overlay <%= openCreateModal ? 'is-open' : '' %>"
+  data-create-modal
+  data-open="<%= openCreateModal ? 'true' : 'false' %>"
+  aria-hidden="<%= openCreateModal ? 'false' : 'true' %>"
+>
+  <button type="button" class="modal-backdrop" data-close-create-modal aria-label="Close popup"></button>
+
+  <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="create-module-title">
+    <div class="modal-header">
+      <div>
+        <h2 id="create-module-title">Create New <%= singular %></h2>
+        <p>Set the title, date range, and visibility for your new <%= singular.toLowerCase() %>.</p>
+      </div>
+      <button type="button" class="modal-close" data-close-create-modal aria-label="Close popup">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M6 6 18 18"></path>
+          <path d="M18 6 6 18"></path>
+        </svg>
+      </button>
+    </div>
+
+    <% if (flashError && openCreateModal) { %>
+      <div class="flash flash-error modal-flash"><%= flashError %></div>
+    <% } %>
+
+    <form action="/<%= pageKey %>/create" method="post" class="create-kuizzosh-form">
+      <label class="field">
+        <span>Title</span>
+        <input
+          type="text"
+          name="title"
+          maxlength="120"
+          placeholder="Enter <%= singular.toLowerCase() %> title"
+          value="<%= createFormData.title %>"
+          required
+        />
+      </label>
+
+      <div class="form-split">
+        <label class="field">
+          <span>Start date</span>
+          <input type="date" name="startDate" value="<%= createFormData.startDate %>" required />
+        </label>
+
+        <label class="field">
+          <span>End date</span>
+          <input type="date" name="endDate" value="<%= createFormData.endDate %>" required />
+        </label>
+      </div>
+
+      <fieldset class="visibility-fieldset">
+        <legend>Visibility</legend>
+        <div class="visibility-options">
+          <label class="visibility-option">
+            <input
+              type="radio"
+              name="visibility"
+              value="private"
+              <%= createFormData.visibility !== 'public' ? 'checked' : '' %>
+            />
+            <span>Private</span>
+          </label>
+
+          <label class="visibility-option">
+            <input
+              type="radio"
+              name="visibility"
+              value="public"
+              <%= createFormData.visibility === 'public' ? 'checked' : '' %>
+            />
+            <span>Public</span>
+          </label>
+        </div>
+      </fieldset>
+
+      <div class="modal-actions">
+        <button type="button" class="secondary-button" data-close-create-modal>Discard</button>
+        <button type="submit" class="primary-button">Create</button>
+      </div>
+    </form>
+  </section>
+</div>
+
+<%- include("partials/foot") %>

@@ -1,0 +1,25 @@
+<%- include("partials/head", { title, pageStyles: ["/css/pages/quiz-present.css"] }) %>
+
+<main class="quiz-present-page">
+  <% if (!canGoLive) { %>
+    <section class="quiz-present-shell">
+      <div class="quiz-present-stage">
+        <span class="section-pill">Present Mode</span>
+        <h1><%= item.title %></h1>
+        <p>Save this quiz first so Kuizzosh can build the live question flow.</p>
+      </div>
+    </section>
+  <% } else { %>
+    <section
+      class="quiz-present-shell"
+      data-quiz-live-present
+      data-state-url="/api/quizzes/<%= item.id %>/live/<%= initialSnapshot.sessionId %>"
+    >
+      <script type="application/json" data-quiz-live-present-data><%- serializedLiveSnapshot %></script>
+    </section>
+  <% } %>
+</main>
+
+<script src="/js/quiz-live-audio.js"></script>
+<script src="/js/quiz-live-present.js"></script>
+<%- include("partials/foot") %>

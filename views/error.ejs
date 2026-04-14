@@ -1,0 +1,12 @@
+<%- include("partials/head", { title, pageStyles: ["/css/pages/error.css"] }) %>
+
+<main class="error-page">
+  <section class="error-card">
+    <span class="section-pill">Kuizzosh</span>
+    <h1><%= title %></h1>
+    <p><%= message %></p>
+    <a class="primary-button button-link" href="/dashboard">Back to dashboard</a>
+  </section>
+</main>
+
+<%- include("partials/foot") %>

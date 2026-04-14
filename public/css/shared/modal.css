@@ -1,0 +1,150 @@
+body.modal-open {
+  overflow: hidden;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+
+.modal-overlay.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(16, 16, 18, 0.45);
+}
+
+.modal-panel {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 580px);
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  box-shadow: 0 24px 60px rgba(16, 16, 18, 0.18);
+}
+
+.modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.modal-header h2 {
+  margin: 0 0 6px;
+  font-size: 1.55rem;
+  line-height: 1.1;
+}
+
+.modal-header p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.modal-close {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+}
+
+.modal-close svg {
+  width: 18px;
+  height: 18px;
+}
+
+.modal-flash {
+  margin-top: 18px;
+}
+
+.create-kuizzosh-form {
+  display: grid;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.form-split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.visibility-fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.visibility-fieldset legend {
+  padding: 0;
+  margin-bottom: 10px;
+  font-weight: 700;
+}
+
+.visibility-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.visibility-option {
+  position: relative;
+}
+
+.visibility-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.visibility-option span {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  font-weight: 700;
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+
+.visibility-option input:checked + span {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+@media (max-width: 760px) {
+  .form-split,
+  .visibility-options {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-panel {
+    padding: 24px 20px;
+  }
+}
