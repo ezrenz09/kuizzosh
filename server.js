@@ -15,15 +15,25 @@ const PORT = process.env.PORT || 3000;
 const DATA_DIR = path.join(__dirname, "data");
 const DB_PATH = path.join(DATA_DIR, "kuizzosh.sqlite");
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
+const SUPABASE_DATABASE_URL = String(process.env.SUPABASE_DATABASE_URL || "").trim();
+const RUNTIME_DATABASE_URL = DATABASE_URL || SUPABASE_DATABASE_URL;
 const SUPABASE_URL = String(process.env.SUPABASE_URL || "").trim();
 const SUPABASE_ANON_KEY = String(process.env.SUPABASE_ANON_KEY || "").trim();
 const SUPABASE_SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
-const USE_POSTGRES = Boolean(DATABASE_URL);
+const USE_POSTGRES = Boolean(RUNTIME_DATABASE_URL);
 const USE_SUPABASE_AUTH = Boolean(
   SUPABASE_URL && SUPABASE_ANON_KEY && SUPABASE_SERVICE_ROLE_KEY
 );
 
-fs.mkdirSync(DATA_DIR, { recursive: true });
+if (!USE_POSTGRES) {
+  if (process.env.VERCEL) {
+    throw new Error(
+      "Missing DATABASE_URL on Vercel. Set DATABASE_URL or SUPABASE_DATABASE_URL to your Supabase Postgres connection string."
+    );
+  }
+
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
 
 let db = null;
 let pool = null;
@@ -36,8 +46,8 @@ if (USE_POSTGRES) {
   const PgSession = require("connect-pg-simple")(session);
 
   pool = new Pool({
-    connectionString: DATABASE_URL,
-    ssl: DATABASE_URL.includes("localhost")
+    connectionString: RUNTIME_DATABASE_URL,
+    ssl: RUNTIME_DATABASE_URL.includes("localhost")
       ? false
       : {
           rejectUnauthorized: false
