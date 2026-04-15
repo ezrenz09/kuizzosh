@@ -2959,6 +2959,14 @@ app.post("/register", requireGuest, async (req, res) => {
   const password = String(req.body.password || "");
   const confirmPassword = String(req.body.confirmPassword || "");
 
+  console.log("Register request received:", {
+    email,
+    hasName: Boolean(name),
+    passwordLength: password.length,
+    confirmPasswordLength: confirmPassword.length,
+    useSupabaseAuth: USE_SUPABASE_AUTH
+  });
+
   if (!name || !email || !password || !confirmPassword) {
     renderAuthPage(res, "register", {
       title: "Register",
