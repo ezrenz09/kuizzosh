@@ -3016,6 +3016,14 @@ app.post("/register", requireGuest, async (req, res) => {
         authUser = await registerWithSupabase({ name, email, password });
         newUser = await syncLocalUserWithSupabaseAuthUser(authUser);
       } catch (error) {
+        console.error("Supabase registration step failed:", {
+          message: error?.message || String(error),
+          code: error?.code || "",
+          status: error?.status || error?.statusCode || "",
+          name: error?.name || "",
+          email
+        });
+
         if (authUser?.id) {
           try {
             const supabaseAdmin = await getSupabaseAdminClient();
