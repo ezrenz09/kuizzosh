@@ -3,7 +3,7 @@ const quizLivePresentDataScript = document.querySelector("[data-quiz-live-presen
 
 if (quizLivePresentShell && quizLivePresentDataScript) {
   const stateUrl = quizLivePresentShell.dataset.stateUrl || "";
-  const STATE_POLL_INTERVAL_MS = 500;
+  const STATE_POLL_INTERVAL_MS = 15000;
   const PHASE_SYNC_INTERVAL_MS = 150;
   let liveSnapshot = {};
   let boundarySyncKey = "";
@@ -11,6 +11,8 @@ if (quizLivePresentShell && quizLivePresentDataScript) {
   let finalCelebrationKey = "";
   let animatedChoiceStatsKey = "";
   let serverClockOffsetMs = 0;
+  let realtimeSubscription = null;
+  let realtimeSessionId = null;
   const audioController =
     typeof window.createQuizLiveAudioController === "function"
       ? window.createQuizLiveAudioController({
@@ -171,8 +173,13 @@ if (quizLivePresentShell && quizLivePresentDataScript) {
         question: {
           id: snapshot.currentQuestion?.id || "",
           prompt: snapshot.currentQuestion?.prompt || "",
+          questionType: snapshot.currentQuestion?.questionType || "",
           position: snapshot.currentQuestion?.position || 0,
           imageUrl: snapshot.currentQuestion?.imageUrl || "",
+          acceptedAnswer: snapshot.currentQuestion?.acceptedAnswer || "",
+          correctResponseCount: snapshot.currentQuestion?.correctResponseCount || 0,
+          incorrectResponseCount: snapshot.currentQuestion?.incorrectResponseCount || 0,
+          typedResponseCount: snapshot.currentQuestion?.typedResponseCount || 0,
           choices: (snapshot.currentQuestion?.choices || []).map((choice) => ({
             id: choice.id,
             label: choice.label
@@ -189,8 +196,13 @@ if (quizLivePresentShell && quizLivePresentDataScript) {
         question: {
           id: snapshot.currentQuestion?.id || "",
           prompt: snapshot.currentQuestion?.prompt || "",
+          questionType: snapshot.currentQuestion?.questionType || "",
           position: snapshot.currentQuestion?.position || 0,
           imageUrl: snapshot.currentQuestion?.imageUrl || "",
+          acceptedAnswer: snapshot.currentQuestion?.acceptedAnswer || "",
+          correctResponseCount: snapshot.currentQuestion?.correctResponseCount || 0,
+          incorrectResponseCount: snapshot.currentQuestion?.incorrectResponseCount || 0,
+          typedResponseCount: snapshot.currentQuestion?.typedResponseCount || 0,
           choices: (snapshot.currentQuestion?.choices || []).map((choice) => ({
             id: choice.id,
             label: choice.label,
@@ -492,6 +504,44 @@ if (quizLivePresentShell && quizLivePresentDataScript) {
     `;
   };
 
+  const renderFreeTextStage = () => `
+    <section class="quiz-live-free-text-prompt quiz-live-free-text-prompt-dark">
+      <div class="quiz-live-free-text-prompt-icon" aria-hidden="true">Aa</div>
+      <div class="quiz-live-free-text-prompt-copy">
+        <span>Free text</span>
+        <strong>Players type the answer on their own device.</strong>
+      </div>
+    </section>
+  `;
+
+  const renderFreeTextReveal = (snapshot) => {
+    const typedCount = Number(snapshot.currentQuestion?.typedResponseCount || 0);
+    const typedLabel = typedCount === 1 ? "1 player typed an answer" : `${typedCount} players typed an answer`;
+
+    return `
+      <section class="quiz-live-free-text-reveal quiz-live-free-text-reveal-dark">
+        <article class="quiz-live-free-text-answer-card">
+          <span>Correct answer</span>
+          <strong>${escapeHtml(snapshot.currentQuestion?.acceptedAnswer || "")}</strong>
+        </article>
+        <div class="quiz-live-free-text-stats">
+          <article class="quiz-live-free-text-stat">
+            <span>Correct</span>
+            <strong>${snapshot.currentQuestion?.correctResponseCount || 0}</strong>
+          </article>
+          <article class="quiz-live-free-text-stat">
+            <span>Wrong</span>
+            <strong>${snapshot.currentQuestion?.incorrectResponseCount || 0}</strong>
+          </article>
+          <article class="quiz-live-free-text-stat">
+            <span>Typed</span>
+            <strong>${escapeHtml(typedLabel)}</strong>
+          </article>
+        </div>
+      </section>
+    `;
+  };
+
   const renderQuestionChoices = (snapshot) => {
     if (!snapshot.currentQuestion?.choices?.length) {
       return "";
@@ -689,6 +739,7 @@ if (quizLivePresentShell && quizLivePresentDataScript) {
   const applySnapshot = (snapshot, force = false) => {
     liveSnapshot = snapshot || {};
     syncServerClock(liveSnapshot);
+    ensureRealtimeSubscription(liveSnapshot.sessionId).catch(() => {});
 
     if (liveSnapshot.status !== "ended") {
       finalCelebrationKey = "";
@@ -701,6 +752,64 @@ if (quizLivePresentShell && quizLivePresentDataScript) {
 
     lastRenderSignature = renderSignature;
     render(liveSnapshot);
+  };
+
+  const applyProgressUpdate = (progress) => {
+    if (
+      !progress ||
+      liveSnapshot.status !== "question" ||
+      progress.status !== "question" ||
+      Number(progress.sessionId || 0) !== Number(liveSnapshot.sessionId || 0) ||
+      Number(progress.currentQuestionId || 0) !== Number(liveSnapshot.currentQuestion?.id || 0)
+    ) {
+      return;
+    }
+
+    applySnapshot({
+      ...liveSnapshot,
+      serverNow: progress.serverNow || liveSnapshot.serverNow,
+      participantCount: Number(progress.participantCount || 0),
+      answeredCount: Number(progress.answeredCount || 0),
+      unansweredCount: Number(progress.unansweredCount || 0),
+      answeredPercentage: Number(progress.answeredPercentage || 0),
+      currentQuestion: {
+        ...liveSnapshot.currentQuestion,
+        correctResponseCount: Number(
+          progress.currentQuestion?.correctResponseCount ?? liveSnapshot.currentQuestion?.correctResponseCount ?? 0
+        ),
+        incorrectResponseCount: Number(
+          progress.currentQuestion?.incorrectResponseCount ?? liveSnapshot.currentQuestion?.incorrectResponseCount ?? 0
+        ),
+        typedResponseCount: Number(
+          progress.currentQuestion?.typedResponseCount ?? liveSnapshot.currentQuestion?.typedResponseCount ?? 0
+        )
+      }
+    });
+  };
+
+  const ensureRealtimeSubscription = async (sessionId) => {
+    const nextSessionId = Number.parseInt(String(sessionId || ""), 10);
+
+    if (
+      !Number.isInteger(nextSessionId) ||
+      nextSessionId <= 0 ||
+      realtimeSessionId === nextSessionId ||
+      typeof window.createQuizLiveRealtimeSubscription !== "function"
+    ) {
+      return;
+    }
+
+    await Promise.resolve(realtimeSubscription?.unsubscribe?.()).catch(() => {});
+    realtimeSessionId = nextSessionId;
+    realtimeSubscription = await window.createQuizLiveRealtimeSubscription({
+      sessionId: nextSessionId,
+      onSnapshot: (snapshot) => {
+        applySnapshot(snapshot);
+      },
+      onProgress: (progress) => {
+        applyProgressUpdate(progress);
+      }
+    });
   };
 
   const render = (snapshot) => {
@@ -777,14 +886,19 @@ if (quizLivePresentShell && quizLivePresentDataScript) {
         body: `
           ${renderQuestionTimebar(snapshot)}
           ${renderQuestionMedia(snapshot)}
-          ${renderQuestionChoices(snapshot)}
+          ${
+            snapshot.currentQuestion?.questionType === "free_text"
+              ? renderFreeTextStage(snapshot)
+              : renderQuestionChoices(snapshot)
+          }
         `
       });
       return;
     }
 
     if (isChartStage) {
-      const shouldAnimateStats = shouldAnimateChoiceStats(snapshot);
+      const shouldAnimateStats =
+        snapshot.currentQuestion?.questionType !== "free_text" && shouldAnimateChoiceStats(snapshot);
 
       quizLivePresentShell.innerHTML = renderStage({
         iconName: "chart",
@@ -803,7 +917,11 @@ if (quizLivePresentShell && quizLivePresentDataScript) {
         ],
         body: `
           ${renderQuestionMedia(snapshot)}
-          ${renderChoiceChart(snapshot, { animateStats: shouldAnimateStats })}
+          ${
+            snapshot.currentQuestion?.questionType === "free_text"
+              ? renderFreeTextReveal(snapshot)
+              : renderChoiceChart(snapshot, { animateStats: shouldAnimateStats })
+          }
         `
       });
 
@@ -940,4 +1058,7 @@ if (quizLivePresentShell && quizLivePresentDataScript) {
       }
     }
   }, PHASE_SYNC_INTERVAL_MS);
+  window.addEventListener("beforeunload", () => {
+    Promise.resolve(realtimeSubscription?.unsubscribe?.()).catch(() => {});
+  });
 }

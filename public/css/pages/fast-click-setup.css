@@ -1,0 +1,97 @@
+@import url("/css/shared/base.css");
+@import url("/css/shared/app-shell.css");
+@import url("/css/shared/setup.css");
+
+.fast-click-setup-page {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.fast-click-setup-hero {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.fast-click-setup-hero h1 {
+  margin: 0;
+  font-size: clamp(2.2rem, 4vw, 3.6rem);
+}
+
+.fast-click-setup-hero p {
+  margin: 0;
+  max-width: 56rem;
+  color: var(--text-soft, #64748b);
+  font-size: 1.05rem;
+}
+
+.fast-click-setup-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  gap: 1.25rem;
+}
+
+.fast-click-setup-card {
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 1.75rem;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.08);
+  padding: 1.5rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.fast-click-setup-card h2,
+.fast-click-setup-card p {
+  margin: 0;
+}
+
+.fast-click-setup-card p {
+  color: var(--text-soft, #64748b);
+}
+
+.fast-click-setup-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.fast-click-setup-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.fast-click-recent-list {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.fast-click-recent-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 1.2rem;
+  padding: 1rem 1.1rem;
+}
+
+.fast-click-recent-copy {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.fast-click-recent-copy span,
+.fast-click-setup-empty {
+  color: var(--text-soft, #64748b);
+}
+
+.fast-click-recent-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 960px) {
+  .fast-click-setup-grid {
+    grid-template-columns: 1fr;
+  }
+}

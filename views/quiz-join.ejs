@@ -68,6 +68,7 @@
         </div>
 
         <section class="quiz-player-join-card quiz-player-entry-join" data-quiz-join-gate data-join-state="<%= joinState %>" data-session-active="<%= activeSession ? 'true' : 'false' %>">
+          <script type="application/json" data-quiz-live-realtime-config><%- serializedRealtimeConfig %></script>
           <% if (joinError) { %>
             <div class="dashboard-inline-flash dashboard-inline-flash-error"><%= joinError %></div>
           <% } %>
@@ -114,6 +115,7 @@
       data-answer-url="/api/quizzes/join/<%= item.quiz_code %>/answer"
     >
       <script type="application/json" data-quiz-live-player-data><%- serializedLiveSnapshot %></script>
+      <script type="application/json" data-quiz-live-realtime-config><%- serializedRealtimeConfig %></script>
       <div class="quiz-player-identity">
         <span>Playing as</span>
         <strong><%= participant.display_name %></strong>
@@ -122,6 +124,8 @@
   <% } %>
 </main>
 
+<script src="/vendor/supabase/supabase.js"></script>
 <script src="/js/quiz-live-audio.js"></script>
+<script src="/js/quiz-live-realtime.js"></script>
 <script src="/js/quiz-live-player.js"></script>
 <%- include("partials/foot") %>

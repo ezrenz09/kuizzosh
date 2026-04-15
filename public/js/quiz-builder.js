@@ -28,6 +28,45 @@ if (quizBuilderForm && quizBuilderDataScript) {
     isCorrect: overrides.isCorrect === undefined ? index === 1 : Boolean(overrides.isCorrect)
   });
 
+  const createFreeTextChoice = (overrides = {}) => ({
+    label: String(overrides.label || "").trim(),
+    isCorrect: true
+  });
+
+  const getSupportedQuestionType = (value) =>
+    ["single_choice", "multiple_choice", "true_false", "free_text"].includes(value)
+      ? value
+      : "single_choice";
+
+  const createDefaultQuestionChoices = (questionType = "single_choice") => {
+    if (questionType === "true_false") {
+      return [
+        createChoice(1, { label: "True" }),
+        createChoice(2, { label: "False", isCorrect: false })
+      ];
+    }
+
+    if (questionType === "free_text") {
+      return [createFreeTextChoice()];
+    }
+
+    return [
+      createChoice(1),
+      createChoice(2, { isCorrect: false }),
+      createChoice(3, { isCorrect: false }),
+      createChoice(4, { isCorrect: false })
+    ];
+  };
+
+  const getFreeTextAnswerLabel = (question) => {
+    if (!Array.isArray(question?.choices) || !question.choices.length) {
+      return "";
+    }
+
+    const correctChoice = question.choices.find((choice) => choice.isCorrect) || question.choices[0];
+    return String(correctChoice?.label || "").replace(/\s+/g, " ").trim();
+  };
+
   const createQuestion = () => ({
     prompt: "",
     imageUrl: "",
@@ -35,12 +74,7 @@ if (quizBuilderForm && quizBuilderDataScript) {
     points: 100,
     timeLimit: 20,
     showLeaderboard: false,
-    choices: [
-      createChoice(1),
-      createChoice(2, { isCorrect: false }),
-      createChoice(3, { isCorrect: false }),
-      createChoice(4, { isCorrect: false })
-    ]
+    choices: createDefaultQuestionChoices("single_choice")
   });
 
   const createSection = (index) => ({
@@ -62,21 +96,37 @@ if (quizBuilderForm && quizBuilderDataScript) {
                 ? questions.map((question) => ({
                     prompt: String(question?.prompt || ""),
                     imageUrl: String(question?.imageUrl || "").trim(),
-                    questionType: ["single_choice", "multiple_choice", "true_false"].includes(
-                      question?.questionType
-                    )
-                      ? question.questionType
-                      : "single_choice",
+                    questionType: getSupportedQuestionType(question?.questionType),
                     points: Number.parseInt(question?.points, 10) || 100,
                     timeLimit: Number.parseInt(question?.timeLimit, 10) || 20,
                     showLeaderboard: Boolean(question?.showLeaderboard),
-                    choices: Array.isArray(question?.choices) && question.choices.length
-                      ? question.choices.map((choice, choiceIndex) => ({
-                          label:
-                            String(choice?.label || "").trim() || `Option ${choiceIndex + 1}`,
-                          isCorrect: Boolean(choice?.isCorrect)
-                        }))
-                      : createQuestion().choices
+                    choices: (() => {
+                      const questionType = getSupportedQuestionType(question?.questionType);
+                      const rawChoices = Array.isArray(question?.choices) ? question.choices : [];
+
+                      if (questionType === "free_text") {
+                        return [
+                          createFreeTextChoice({
+                            label:
+                              String(
+                                (rawChoices.find((choice) => Boolean(choice?.isCorrect)) || rawChoices[0])?.label || ""
+                              )
+                          })
+                        ];
+                      }
+
+                      const fallbackChoices = createDefaultQuestionChoices(questionType);
+
+                      return rawChoices.length
+                        ? rawChoices.map((choice, choiceIndex) => ({
+                            label:
+                              String(choice?.label || "").trim() ||
+                              fallbackChoices[choiceIndex]?.label ||
+                              `Option ${choiceIndex + 1}`,
+                            isCorrect: Boolean(choice?.isCorrect)
+                          }))
+                        : fallbackChoices;
+                    })()
                   }))
                 : [createQuestion()]
             };
@@ -212,9 +262,22 @@ if (quizBuilderForm && quizBuilderDataScript) {
     ensureSingleCorrectChoice(question);
   };
 
+  const setFreeTextChoice = (question) => {
+    question.choices = [
+      createFreeTextChoice({
+        label: getFreeTextAnswerLabel(question)
+      })
+    ];
+  };
+
   const syncQuestionRules = (question) => {
     if (question.questionType === "true_false") {
       setTrueFalseChoices(question);
+      return;
+    }
+
+    if (question.questionType === "free_text") {
+      setFreeTextChoice(question);
       return;
     }
 
@@ -579,11 +642,14 @@ if (quizBuilderForm && quizBuilderDataScript) {
       return;
     }
 
-    const choicesMarkup = question.choices
-      .map((choice, choiceIndex) =>
-        buildChoiceMarkup(question, activeSectionIndex, activeQuestionIndex, choice, choiceIndex)
-      )
-      .join("");
+    const isFreeTextQuestion = question.questionType === "free_text";
+    const choicesMarkup = isFreeTextQuestion
+      ? ""
+      : question.choices
+          .map((choice, choiceIndex) =>
+            buildChoiceMarkup(question, activeSectionIndex, activeQuestionIndex, choice, choiceIndex)
+          )
+          .join("");
     const imageMarkup = question.imageUrl
       ? `
           <div class="quiz-question-image-preview">
@@ -655,6 +721,7 @@ if (quizBuilderForm && quizBuilderDataScript) {
                   <option value="single_choice" ${question.questionType === "single_choice" ? "selected" : ""}>Single choice</option>
                   <option value="multiple_choice" ${question.questionType === "multiple_choice" ? "selected" : ""}>Multiple choice</option>
                   <option value="true_false" ${question.questionType === "true_false" ? "selected" : ""}>True / False</option>
+                  <option value="free_text" ${question.questionType === "free_text" ? "selected" : ""}>Free text</option>
                 </select>
               </label>
 
@@ -760,20 +827,45 @@ if (quizBuilderForm && quizBuilderDataScript) {
           </section>
 
           <div class="quiz-choice-list">
-            <div class="quiz-choice-stack">
-              ${choicesMarkup}
-            </div>
+            ${
+              isFreeTextQuestion
+                ? `
+                  <div class="quiz-free-text-card">
+                    <div class="quiz-free-text-card-head">
+                      <div class="quiz-free-text-card-copy">
+                        <strong>Accepted answer</strong>
+                        <span>Players must type this answer. Matching ignores uppercase and lowercase differences.</span>
+                      </div>
+                      <span class="quiz-free-text-card-badge">Text</span>
+                    </div>
+                    <input
+                      type="text"
+                      class="quiz-choice-input quiz-free-text-input"
+                      value="${escapeHtml(getFreeTextAnswerLabel(question))}"
+                      placeholder="Type the correct answer"
+                      data-free-text-answer="true"
+                      data-section-index="${activeSectionIndex}"
+                      data-question-index="${activeQuestionIndex}"
+                    />
+                  </div>
+                `
+                : `
+                  <div class="quiz-choice-stack">
+                    ${choicesMarkup}
+                  </div>
 
-            <button
-              type="button"
-              class="quiz-add-choice-link"
-              data-add-choice="${activeQuestionIndex}"
-              data-section-index="${activeSectionIndex}"
-              ${question.questionType === "true_false" || question.choices.length >= 6 ? "disabled" : ""}
-            >
-              <span>+</span>
-              <span>Add option</span>
-            </button>
+                  <button
+                    type="button"
+                    class="quiz-add-choice-link"
+                    data-add-choice="${activeQuestionIndex}"
+                    data-section-index="${activeSectionIndex}"
+                    ${question.questionType === "true_false" || question.choices.length >= 6 ? "disabled" : ""}
+                  >
+                    <span>+</span>
+                    <span>Add option</span>
+                  </button>
+                `
+            }
           </div>
         </article>
 
@@ -972,7 +1064,11 @@ if (quizBuilderForm && quizBuilderDataScript) {
       const questionIndex = Number.parseInt(addChoiceButton.dataset.addChoice, 10) || 0;
       const question = state.sections[sectionIndex].questions[questionIndex];
 
-      if (question.questionType === "true_false" || question.choices.length >= 6) {
+      if (
+        question.questionType === "true_false" ||
+        question.questionType === "free_text" ||
+        question.choices.length >= 6
+      ) {
         return;
       }
 
@@ -1059,6 +1155,16 @@ if (quizBuilderForm && quizBuilderDataScript) {
       const choiceIndex = Number.parseInt(event.target.dataset.choiceLabel, 10) || 0;
       question.choices[choiceIndex].label = event.target.value;
       syncHiddenState();
+      return;
+    }
+
+    if (event.target.matches("[data-free-text-answer]")) {
+      question.choices = [
+        createFreeTextChoice({
+          label: event.target.value
+        })
+      ];
+      syncHiddenState();
     }
   });
 
@@ -1097,16 +1203,8 @@ if (quizBuilderForm && quizBuilderDataScript) {
     const question = state.sections[sectionIndex].questions[questionIndex];
 
     if (event.target.matches("[data-question-type]")) {
-      question.questionType = event.target.value;
-
-      if (question.questionType === "true_false") {
-        setTrueFalseChoices(question);
-      } else if (question.questionType === "multiple_choice") {
-        ensureMultipleChoiceState(question);
-      } else {
-        ensureSingleCorrectChoice(question);
-      }
-
+      question.questionType = getSupportedQuestionType(event.target.value);
+      syncQuestionRules(question);
       render();
       return;
     }

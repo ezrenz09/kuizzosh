@@ -6,10 +6,13 @@ if (quizLiveHostShell && quizLiveHostDataScript) {
   const advanceUrl = quizLiveHostShell.dataset.advanceUrl || "";
   const endUrl = quizLiveHostShell.dataset.endUrl || "";
   const restartUrl = quizLiveHostShell.dataset.restartUrl || "";
+  const STATE_POLL_INTERVAL_MS = 15000;
   let liveSnapshot = {};
   let actionPending = false;
   let boundarySyncKey = "";
   let animatedChoiceStatsKey = "";
+  let realtimeSubscription = null;
+  let realtimeSessionId = null;
   const hostIcons = {
     spark:
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8Z"></path></svg>',
@@ -226,6 +229,44 @@ if (quizLiveHostShell && quizLiveHostDataScript) {
       <figure class="quiz-live-question-media">
         <img src="${escapeHtml(snapshot.currentQuestion.imageUrl)}" alt="Question reference image" />
       </figure>
+    `;
+  };
+
+  const renderFreeTextStage = () => `
+    <section class="quiz-live-free-text-prompt">
+      <div class="quiz-live-free-text-prompt-icon" aria-hidden="true">Aa</div>
+      <div class="quiz-live-free-text-prompt-copy">
+        <span>Free text</span>
+        <strong>Players type the answer on their own device.</strong>
+      </div>
+    </section>
+  `;
+
+  const renderFreeTextReveal = (snapshot) => {
+    const typedCount = Number(snapshot.currentQuestion?.typedResponseCount || 0);
+    const typedLabel = typedCount === 1 ? "1 player typed an answer" : `${typedCount} players typed an answer`;
+
+    return `
+      <section class="quiz-live-free-text-reveal">
+        <article class="quiz-live-free-text-answer-card">
+          <span>Correct answer</span>
+          <strong>${escapeHtml(snapshot.currentQuestion?.acceptedAnswer || "")}</strong>
+        </article>
+        <div class="quiz-live-free-text-stats">
+          <article class="quiz-live-free-text-stat">
+            <span>Correct</span>
+            <strong>${snapshot.currentQuestion?.correctResponseCount || 0}</strong>
+          </article>
+          <article class="quiz-live-free-text-stat">
+            <span>Wrong</span>
+            <strong>${snapshot.currentQuestion?.incorrectResponseCount || 0}</strong>
+          </article>
+          <article class="quiz-live-free-text-stat">
+            <span>Typed</span>
+            <strong>${escapeHtml(typedLabel)}</strong>
+          </article>
+        </div>
+      </section>
     `;
   };
 
@@ -534,7 +575,11 @@ if (quizLiveHostShell && quizLiveHostDataScript) {
           ],
           body: `
             ${renderQuestionMedia(snapshot)}
-            ${renderQuestionChoices(snapshot)}
+            ${
+              snapshot.currentQuestion?.questionType === "free_text"
+                ? renderFreeTextStage(snapshot)
+                : renderQuestionChoices(snapshot)
+            }
           `,
           stageClass: "quiz-live-host-runtime-question"
         },
@@ -543,7 +588,8 @@ if (quizLiveHostShell && quizLiveHostDataScript) {
     }
 
     if (snapshot.status === "leaderboard" && snapshot.phaseMode === "chart") {
-      const shouldAnimateStats = shouldAnimateChoiceStats(snapshot);
+      const shouldAnimateStats =
+        snapshot.currentQuestion?.questionType !== "free_text" && shouldAnimateChoiceStats(snapshot);
 
       return renderHostStage(
         {
@@ -558,7 +604,11 @@ if (quizLiveHostShell && quizLiveHostDataScript) {
           ],
           body: `
             ${renderQuestionMedia(snapshot)}
-            ${renderChoiceChart(snapshot, { animateStats: shouldAnimateStats })}
+            ${
+              snapshot.currentQuestion?.questionType === "free_text"
+                ? renderFreeTextReveal(snapshot)
+                : renderChoiceChart(snapshot, { animateStats: shouldAnimateStats })
+            }
           `,
           stageClass: "quiz-live-host-runtime-chart"
         },
@@ -631,6 +681,8 @@ if (quizLiveHostShell && quizLiveHostDataScript) {
   };
 
   const render = (snapshot) => {
+    ensureRealtimeSubscription(snapshot.sessionId).catch(() => {});
+
     const isChartStage = snapshot.status === "leaderboard" && snapshot.phaseMode === "chart";
     if (!isChartStage) {
       animatedChoiceStatsKey = "";
@@ -651,6 +703,67 @@ if (quizLiveHostShell && quizLiveHostDataScript) {
       animateChoiceStats(quizLiveHostShell);
       animatedChoiceStatsKey = getChoiceStatsAnimationKey(snapshot);
     }
+  };
+
+  const applyProgressUpdate = (progress) => {
+    if (
+      !progress ||
+      liveSnapshot.status !== "question" ||
+      progress.status !== "question" ||
+      Number(progress.sessionId || 0) !== Number(liveSnapshot.sessionId || 0) ||
+      Number(progress.currentQuestionId || 0) !== Number(liveSnapshot.currentQuestion?.id || 0)
+    ) {
+      return;
+    }
+
+    liveSnapshot = {
+      ...liveSnapshot,
+      serverNow: progress.serverNow || liveSnapshot.serverNow,
+      participantCount: Number(progress.participantCount || 0),
+      answeredCount: Number(progress.answeredCount || 0),
+      unansweredCount: Number(progress.unansweredCount || 0),
+      answeredPercentage: Number(progress.answeredPercentage || 0),
+      currentQuestion: {
+        ...liveSnapshot.currentQuestion,
+        correctResponseCount: Number(
+          progress.currentQuestion?.correctResponseCount ?? liveSnapshot.currentQuestion?.correctResponseCount ?? 0
+        ),
+        incorrectResponseCount: Number(
+          progress.currentQuestion?.incorrectResponseCount ?? liveSnapshot.currentQuestion?.incorrectResponseCount ?? 0
+        ),
+        typedResponseCount: Number(
+          progress.currentQuestion?.typedResponseCount ?? liveSnapshot.currentQuestion?.typedResponseCount ?? 0
+        )
+      }
+    };
+    render(liveSnapshot);
+  };
+
+  const ensureRealtimeSubscription = async (sessionId) => {
+    const nextSessionId = Number.parseInt(String(sessionId || ""), 10);
+
+    if (
+      !Number.isInteger(nextSessionId) ||
+      nextSessionId <= 0 ||
+      realtimeSessionId === nextSessionId ||
+      typeof window.createQuizLiveRealtimeSubscription !== "function"
+    ) {
+      return;
+    }
+
+    await Promise.resolve(realtimeSubscription?.unsubscribe?.()).catch(() => {});
+    realtimeSessionId = nextSessionId;
+    realtimeSubscription = await window.createQuizLiveRealtimeSubscription({
+      sessionId: nextSessionId,
+      onSnapshot: (snapshot) => {
+        liveSnapshot = snapshot || {};
+        boundarySyncKey = "";
+        render(liveSnapshot);
+      },
+      onProgress: (progress) => {
+        applyProgressUpdate(progress);
+      }
+    });
   };
 
   const loadState = async () => {
@@ -724,7 +837,7 @@ if (quizLiveHostShell && quizLiveHostDataScript) {
   render(liveSnapshot);
   window.setInterval(() => {
     loadState().catch(() => {});
-  }, 1000);
+  }, STATE_POLL_INTERVAL_MS);
   window.setInterval(() => {
     const countdown = quizLiveHostShell.querySelector("[data-live-countdown]");
     if (countdown) {
@@ -746,4 +859,7 @@ if (quizLiveHostShell && quizLiveHostDataScript) {
       }
     }
   }, 250);
+  window.addEventListener("beforeunload", () => {
+    Promise.resolve(realtimeSubscription?.unsubscribe?.()).catch(() => {});
+  });
 }

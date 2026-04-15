@@ -341,6 +341,183 @@
   text-transform: uppercase;
 }
 
+.quiz-live-free-text-prompt,
+.quiz-live-free-text-reveal,
+.quiz-live-free-text-shell {
+  width: min(100%, 760px);
+  justify-self: center;
+}
+
+.quiz-live-free-text-prompt,
+.quiz-live-free-text-reveal {
+  display: grid;
+  gap: 18px;
+}
+
+.quiz-live-free-text-prompt {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  padding: 20px 22px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--paper-soft);
+}
+
+.quiz-live-free-text-prompt-icon {
+  width: 62px;
+  height: 62px;
+  display: grid;
+  place-items: center;
+  border-radius: 20px;
+  background: rgba(255, 230, 45, 0.16);
+  color: #8a6500;
+  font-size: 1.5rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+}
+
+.quiz-live-free-text-prompt-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.quiz-live-free-text-prompt-copy span,
+.quiz-live-free-text-answer-card span,
+.quiz-live-free-text-player-result span,
+.quiz-live-free-text-stat span,
+.quiz-live-free-text-field span {
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.quiz-live-free-text-prompt-copy span,
+.quiz-live-free-text-answer-card span,
+.quiz-live-free-text-player-result span,
+.quiz-live-free-text-stat span,
+.quiz-live-free-text-field span {
+  color: var(--muted);
+}
+
+.quiz-live-free-text-prompt-copy strong,
+.quiz-live-free-text-answer-card strong,
+.quiz-live-free-text-player-result strong,
+.quiz-live-free-text-stat strong {
+  color: var(--ink);
+}
+
+.quiz-live-free-text-prompt-copy strong {
+  font-size: clamp(1.2rem, 2vw, 1.6rem);
+  line-height: 1.25;
+}
+
+.quiz-live-free-text-shell {
+  display: grid;
+  gap: 14px;
+}
+
+.quiz-live-free-text-field {
+  display: grid;
+  gap: 10px;
+}
+
+.quiz-live-free-text-field input {
+  min-height: 60px;
+  padding: 0 18px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 1.06rem;
+  box-shadow: var(--shadow-soft);
+}
+
+.quiz-live-free-text-field input:focus {
+  outline: none;
+  border-color: rgba(255, 212, 59, 0.7);
+  box-shadow: 0 0 0 4px rgba(255, 230, 45, 0.14);
+}
+
+.quiz-live-free-text-field input:disabled {
+  color: var(--ink);
+  background: var(--paper-soft);
+}
+
+.quiz-live-free-text-note {
+  display: grid;
+  gap: 4px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--paper-soft);
+}
+
+.quiz-live-free-text-note strong {
+  color: var(--ink);
+}
+
+.quiz-live-free-text-note span {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.quiz-live-free-text-answer-card,
+.quiz-live-free-text-player-result,
+.quiz-live-free-text-stat {
+  display: grid;
+  gap: 8px;
+  padding: 20px 22px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--paper-soft);
+}
+
+.quiz-live-free-text-answer-card strong {
+  font-size: clamp(1.5rem, 2.4vw, 2rem);
+  line-height: 1.2;
+}
+
+.quiz-live-free-text-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.quiz-live-free-text-stat strong {
+  font-size: clamp(1.12rem, 1.8vw, 1.42rem);
+  line-height: 1.2;
+}
+
+.quiz-live-free-text-player-result {
+  position: relative;
+}
+
+.quiz-live-free-text-player-result em {
+  color: var(--muted);
+  font-style: normal;
+  font-weight: 800;
+}
+
+.quiz-live-free-text-player-result.is-correct {
+  border-color: rgba(43, 166, 106, 0.28);
+  background: rgba(43, 166, 106, 0.1);
+}
+
+.quiz-live-free-text-player-result.is-correct em {
+  color: #1f7a39;
+}
+
+.quiz-live-free-text-player-result.is-wrong {
+  border-color: rgba(223, 61, 87, 0.22);
+  background: rgba(223, 61, 87, 0.08);
+}
+
+.quiz-live-free-text-player-result.is-wrong em {
+  color: #b82e45;
+}
+
 @keyframes quiz-live-choice-select {
   0% {
     transform: scale(0.96);
@@ -793,6 +970,14 @@
     width: 100%;
     justify-items: start;
     text-align: left;
+  }
+
+  .quiz-live-free-text-prompt {
+    grid-template-columns: 1fr;
+  }
+
+  .quiz-live-free-text-stats {
+    grid-template-columns: 1fr;
   }
 
   .quiz-live-leaderboard-row {

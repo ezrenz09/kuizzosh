@@ -1,0 +1,81 @@
+<%- include("partials/head", { title, pageStyles: ["/css/pages/fast-click-setup.css"] }) %>
+
+<main class="dashboard-page">
+  <%- include("partials/sidebar", { user, currentPath }) %>
+
+  <section class="dashboard-main dashboard-main-clean fast-click-setup-page">
+    <% if (flashSuccess) { %>
+      <div class="dashboard-inline-flash dashboard-inline-flash-success"><%= flashSuccess %></div>
+    <% } %>
+    <% if (flashError) { %>
+      <div class="dashboard-inline-flash dashboard-inline-flash-error"><%= flashError %></div>
+    <% } %>
+
+    <section class="fast-click-setup-hero">
+      <span class="section-pill">Fast Click</span>
+      <h1>Setup a reaction-speed room</h1>
+      <p>Create a live round where players wait for the red-to-green signal, then tap as fast as they can.</p>
+    </section>
+
+    <section class="fast-click-setup-grid">
+      <article class="fast-click-setup-card">
+        <h2>Create New Room</h2>
+        <p>Choose the room title and the timing window before opening presenter mode.</p>
+
+        <form action="/fast-click" method="post" class="fast-click-setup-form">
+          <label class="field">
+            <span>Room title</span>
+            <input type="text" name="title" maxlength="120" value="<%= formData.title %>" placeholder="Fast Click Finals" required />
+          </label>
+
+          <div class="form-split">
+            <label class="field">
+              <span>Countdown seconds</span>
+              <input type="number" min="2" max="10" name="countdownSeconds" value="<%= formData.countdownSeconds %>" required />
+            </label>
+
+            <label class="field">
+              <span>Minimum red delay (ms)</span>
+              <input type="number" min="500" max="10000" step="100" name="minSignalDelayMs" value="<%= formData.minSignalDelayMs %>" required />
+            </label>
+          </div>
+
+          <label class="field">
+            <span>Maximum red delay (ms)</span>
+            <input type="number" min="500" max="10000" step="100" name="maxSignalDelayMs" value="<%= formData.maxSignalDelayMs %>" required />
+          </label>
+
+          <div class="fast-click-setup-actions">
+            <button type="submit" class="primary-button">Create Fast Click Room</button>
+          </div>
+        </form>
+      </article>
+
+      <article class="fast-click-setup-card">
+        <h2>Recent Rooms</h2>
+        <p>Jump back into a room you already created.</p>
+
+        <% if (!recentSessions.length) { %>
+          <p class="fast-click-setup-empty">No fast click rooms yet. Create your first one from this page.</p>
+        <% } else { %>
+          <div class="fast-click-recent-list">
+            <% recentSessions.forEach((session) => { %>
+              <article class="fast-click-recent-item">
+                <div class="fast-click-recent-copy">
+                  <strong><%= session.title %></strong>
+                  <span>Code <%= session.room_code %> - <%= session.status %></span>
+                </div>
+                <div class="fast-click-recent-actions">
+                  <a href="<%= session.start_url %>" class="secondary-button">Host</a>
+                  <a href="<%= session.present_url %>" class="secondary-button" target="_blank" rel="noreferrer">Present</a>
+                </div>
+              </article>
+            <% }) %>
+          </div>
+        <% } %>
+      </article>
+    </section>
+  </section>
+</main>
+
+<%- include("partials/foot") %>

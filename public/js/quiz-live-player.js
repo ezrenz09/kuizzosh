@@ -15,6 +15,8 @@ const quizLivePlayerDataScript = document.querySelector("[data-quiz-live-player-
 
 if (quizJoinGate && !quizLivePlayerShell) {
   const stateUrl = `/api${window.location.pathname}/state`;
+  let realtimeSubscription = null;
+  let realtimeSessionId = null;
 
   if (quizJoinForm) {
     quizJoinForm.addEventListener("submit", () => {
@@ -98,7 +100,58 @@ if (quizJoinGate && !quizLivePlayerShell) {
     }
   };
 
-  window.setInterval(async () => {
+  const applyJoinPayload = (payload = {}) => {
+    const snapshot = payload.snapshot || null;
+    const joinState =
+      payload.joinState ||
+      (snapshot?.status === "lobby"
+        ? "lobby"
+        : snapshot && snapshot.status !== "ended"
+          ? "late"
+          : payload.activeSession
+            ? "lobby"
+            : "waiting");
+
+    setJoinState(joinState);
+    setJoinCount(Number(payload.participantCount ?? snapshot?.participantCount ?? 0));
+
+    if (payload.participant) {
+      window.location.reload();
+      return;
+    }
+
+    const nextSessionId =
+      Number.parseInt(String(snapshot?.sessionId || payload.realtime?.sessionId || ""), 10) || null;
+
+    if (
+      nextSessionId &&
+      nextSessionId !== realtimeSessionId &&
+      typeof window.createQuizLiveRealtimeSubscription === "function"
+    ) {
+      Promise.resolve(realtimeSubscription?.unsubscribe?.())
+        .catch(() => {})
+        .finally(async () => {
+          realtimeSessionId = nextSessionId;
+          realtimeSubscription = await window.createQuizLiveRealtimeSubscription({
+            sessionId: nextSessionId,
+            onSnapshot: (nextSnapshot) => {
+              applyJoinPayload({
+                snapshot: nextSnapshot,
+                joinState:
+                  nextSnapshot?.status === "lobby"
+                    ? "lobby"
+                    : nextSnapshot && nextSnapshot.status !== "ended"
+                      ? "late"
+                      : "waiting",
+                participantCount: nextSnapshot?.participantCount || 0
+              });
+            }
+          });
+        });
+    }
+  };
+
+  const loadJoinState = async () => {
     try {
       const response = await fetch(stateUrl, {
         headers: {
@@ -111,16 +164,19 @@ if (quizJoinGate && !quizLivePlayerShell) {
       }
 
       const payload = await response.json();
-      setJoinState(payload.joinState || (payload.activeSession ? "lobby" : "waiting"));
-      setJoinCount(Number(payload.participantCount || 0));
-
-      if (payload.participant) {
-        window.location.reload();
-      }
+      applyJoinPayload(payload);
     } catch (error) {
       // keep current gate state
     }
-  }, 2000);
+  };
+
+  loadJoinState().catch(() => {});
+  window.setInterval(() => {
+    loadJoinState().catch(() => {});
+  }, 4000);
+  window.addEventListener("beforeunload", () => {
+    Promise.resolve(realtimeSubscription?.unsubscribe?.()).catch(() => {});
+  });
 }
 
 if (quizLivePlayerShell && quizLivePlayerDataScript) {
@@ -132,12 +188,15 @@ if (quizLivePlayerShell && quizLivePlayerDataScript) {
   let actionPending = false;
   let selectedChoiceIds = [];
   let selectingChoiceIds = [];
+  let typedAnswerText = "";
   let lastRenderedQuestionId = null;
   let boundarySyncKey = "";
   let wrongAnswerPopupQuestionId = null;
   let wrongAnswerPopupVisible = false;
   let wrongAnswerPopupTimer = null;
   let animatedChoiceStatsKey = "";
+  let realtimeSubscription = null;
+  let realtimeSessionId = null;
   const audioController =
     typeof window.createQuizLiveAudioController === "function"
       ? window.createQuizLiveAudioController({
@@ -180,6 +239,12 @@ if (quizLivePlayerShell && quizLivePlayerDataScript) {
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
+
+  const normalizeTextAnswer = (value) =>
+    String(value || "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
 
   const formatCountdown = (deadlineAt) => {
     if (!deadlineAt) {
@@ -361,6 +426,7 @@ if (quizLivePlayerShell && quizLivePlayerDataScript) {
     if (snapshot.status === "question" && currentQuestionId !== lastRenderedQuestionId) {
       selectedChoiceIds = [];
       selectingChoiceIds = [];
+      typedAnswerText = "";
     }
 
     if (currentQuestionId !== lastRenderedQuestionId) {
@@ -378,11 +444,16 @@ if (quizLivePlayerShell && quizLivePlayerDataScript) {
   const syncWrongAnswerPopupState = (snapshot) => {
     const isRevealChart = snapshot.status === "leaderboard" && snapshot.phaseMode === "chart";
     const currentQuestionId = snapshot.currentQuestion?.id || null;
+    const submittedText = normalizeTextAnswer(snapshot.participant?.submittedText || "");
     const shouldShowWrongAnswerPopup =
       isRevealChart &&
       Boolean(currentQuestionId) &&
       snapshot.participant?.lastAnswerCorrect === false &&
-      Boolean(snapshot.participant?.selectedChoiceIds?.length);
+      (
+        snapshot.currentQuestion?.questionType === "free_text"
+          ? Boolean(submittedText)
+          : Boolean(snapshot.participant?.selectedChoiceIds?.length)
+      );
 
     if (shouldShowWrongAnswerPopup) {
       if (wrongAnswerPopupQuestionId !== currentQuestionId) {
@@ -586,6 +657,83 @@ if (quizLivePlayerShell && quizLivePlayerDataScript) {
     </div>
   `;
 
+  const renderFreeTextInput = (snapshot, options = {}) => {
+    const value =
+      options.value !== undefined ? options.value : snapshot.participant?.submittedText || typedAnswerText;
+    const disabled = Boolean(options.disabled);
+
+    return `
+      <div class="quiz-live-free-text-shell ${disabled ? "is-locked" : ""}">
+        <label class="quiz-live-free-text-field">
+          <span>Your answer</span>
+          <input
+            type="text"
+            value="${escapeHtml(value)}"
+            placeholder="Type your answer"
+            data-player-text-answer
+            maxlength="200"
+            ${disabled ? "disabled" : ""}
+          />
+        </label>
+        ${
+          disabled
+            ? `
+              <div class="quiz-live-free-text-note">
+                <strong>Answer locked</strong>
+                <span>${value ? "Your answer has been submitted." : "No answer was submitted for this question."}</span>
+              </div>
+            `
+            : `
+              <button
+                type="button"
+                class="primary-button"
+                data-player-submit
+                ${normalizeTextAnswer(value) ? "" : "disabled"}
+              >
+                Submit Answer
+              </button>
+            `
+        }
+      </div>
+    `;
+  };
+
+  const renderFreeTextReveal = (snapshot) => {
+    const submittedText = String(snapshot.participant?.submittedText || "").trim();
+    const answeredLabel =
+      snapshot.currentQuestion?.typedResponseCount === 1
+        ? "1 player typed an answer"
+        : `${snapshot.currentQuestion?.typedResponseCount || 0} players typed an answer`;
+
+    return `
+      <section class="quiz-live-free-text-reveal">
+        <article class="quiz-live-free-text-answer-card">
+          <span>Correct answer</span>
+          <strong>${escapeHtml(snapshot.currentQuestion?.acceptedAnswer || "")}</strong>
+        </article>
+        <div class="quiz-live-free-text-stats">
+          <article class="quiz-live-free-text-stat">
+            <span>Correct</span>
+            <strong>${snapshot.currentQuestion?.correctResponseCount || 0}</strong>
+          </article>
+          <article class="quiz-live-free-text-stat">
+            <span>Wrong</span>
+            <strong>${snapshot.currentQuestion?.incorrectResponseCount || 0}</strong>
+          </article>
+          <article class="quiz-live-free-text-stat">
+            <span>Typed</span>
+            <strong>${escapeHtml(answeredLabel)}</strong>
+          </article>
+        </div>
+        <article class="quiz-live-free-text-player-result ${snapshot.participant?.lastAnswerCorrect ? "is-correct" : "is-wrong"}">
+          <span>Your answer</span>
+          <strong>${escapeHtml(submittedText || "No answer submitted")}</strong>
+          <em>${snapshot.participant?.lastAnswerCorrect ? "Correct" : "Wrong"}</em>
+        </article>
+      </section>
+    `;
+  };
+
   const renderChoiceGrid = (snapshot, options = {}) => {
     if (!snapshot.currentQuestion?.choices?.length) {
       return '<p class="quiz-live-muted">No answer options are available for this question.</p>';
@@ -682,6 +830,7 @@ if (quizLivePlayerShell && quizLivePlayerDataScript) {
       : 0;
     const hasPendingSingleChoiceSelection =
       snapshot.currentQuestion?.questionType !== "multiple_choice" && selectedChoiceIds.length > 0;
+    const isFreeTextQuestion = snapshot.currentQuestion?.questionType === "free_text";
 
     if (snapshot.participant?.hasAnsweredCurrentQuestion) {
       return renderStageShell({
@@ -696,11 +845,18 @@ if (quizLivePlayerShell && quizLivePlayerDataScript) {
         body: `
           ${renderQuestionTimebar(snapshot)}
           ${renderQuestionMedia(snapshot)}
-          ${renderChoiceGrid(snapshot, {
-            selectedChoiceIds: snapshot.participant?.selectedChoiceIds || [],
-            disabled: true,
-            muteUnselected: true
-          })}
+          ${
+            isFreeTextQuestion
+              ? renderFreeTextInput(snapshot, {
+                  value: snapshot.participant?.submittedText || "",
+                  disabled: true
+                })
+              : renderChoiceGrid(snapshot, {
+                  selectedChoiceIds: snapshot.participant?.selectedChoiceIds || [],
+                  disabled: true,
+                  muteUnselected: true
+                })
+          }
         `,
         stageClass: "quiz-player-stage-question"
       });
@@ -733,10 +889,17 @@ if (quizLivePlayerShell && quizLivePlayerDataScript) {
       body: `
         ${renderQuestionTimebar(snapshot)}
         ${renderQuestionMedia(snapshot)}
-        ${renderChoiceGrid(snapshot, {
-          disabled: actionPending,
-          muteUnselected: hasPendingSingleChoiceSelection
-        })}
+        ${
+          isFreeTextQuestion
+            ? renderFreeTextInput(snapshot, {
+                value: typedAnswerText,
+                disabled: actionPending
+              })
+            : renderChoiceGrid(snapshot, {
+                disabled: actionPending,
+                muteUnselected: hasPendingSingleChoiceSelection
+              })
+        }
         ${
           snapshot.currentQuestion?.questionType === "multiple_choice"
             ? `
@@ -772,14 +935,18 @@ if (quizLivePlayerShell && quizLivePlayerDataScript) {
         <div class="quiz-player-reveal-shell ${wrongAnswerPopupVisible ? "has-popup" : ""}">
           ${wrongAnswerPopupVisible ? renderWrongAnswerPopup() : ""}
           ${renderQuestionMedia(snapshot)}
-          ${renderChoiceGrid(snapshot, {
-            selectedChoiceIds: snapshot.participant?.selectedChoiceIds || [],
-            disabled: true,
-            muteUnselected: true,
-            showAnswer: true,
-            showStats: true,
-            animateStats: options.animateStats
-          })}
+          ${
+            snapshot.currentQuestion?.questionType === "free_text"
+              ? renderFreeTextReveal(snapshot)
+              : renderChoiceGrid(snapshot, {
+                  selectedChoiceIds: snapshot.participant?.selectedChoiceIds || [],
+                  disabled: true,
+                  muteUnselected: true,
+                  showAnswer: true,
+                  showStats: true,
+                  animateStats: options.animateStats
+                })
+          }
         </div>
       `,
       stageClass: "quiz-player-stage-chart"
@@ -907,6 +1074,50 @@ if (quizLivePlayerShell && quizLivePlayerDataScript) {
     }
   };
 
+  const ensureRealtimeSubscription = async (sessionId) => {
+    const nextSessionId = Number.parseInt(String(sessionId || ""), 10);
+
+    if (
+      !Number.isInteger(nextSessionId) ||
+      nextSessionId <= 0 ||
+      realtimeSessionId === nextSessionId ||
+      typeof window.createQuizLiveRealtimeSubscription !== "function"
+    ) {
+      return;
+    }
+
+    await Promise.resolve(realtimeSubscription?.unsubscribe?.()).catch(() => {});
+    realtimeSessionId = nextSessionId;
+    realtimeSubscription = await window.createQuizLiveRealtimeSubscription({
+      sessionId: nextSessionId,
+      onSnapshot: (snapshot) => {
+        applyServerSnapshot(snapshot);
+      }
+    });
+  };
+
+  const applyServerSnapshot = (snapshot) => {
+    if (!snapshot) {
+      return;
+    }
+
+    const shouldDeferTypingRender =
+      document.activeElement?.matches?.("[data-player-text-answer]") &&
+      liveSnapshot.status === "question" &&
+      snapshot.status === "question" &&
+      liveSnapshot.currentQuestion?.id === snapshot.currentQuestion?.id &&
+      snapshot.currentQuestion?.questionType === "free_text" &&
+      !snapshot.participant?.hasAnsweredCurrentQuestion;
+
+    liveSnapshot = snapshot;
+    boundarySyncKey = "";
+    ensureRealtimeSubscription(snapshot.sessionId).catch(() => {});
+
+    if (!shouldDeferTypingRender) {
+      render(liveSnapshot);
+    }
+  };
+
   const loadState = async () => {
     const response = await fetch(stateUrl, {
       headers: {
@@ -920,14 +1131,23 @@ if (quizLivePlayerShell && quizLivePlayerDataScript) {
 
     const payload = await response.json();
     if (payload.snapshot) {
-      liveSnapshot = payload.snapshot;
-      boundarySyncKey = "";
-      render(liveSnapshot);
+      applyServerSnapshot(payload.snapshot);
     }
   };
 
-  const submitAnswer = async (choiceIds) => {
-    if (!choiceIds.length || actionPending) {
+  const submitAnswer = async (payload) => {
+    const questionType = liveSnapshot.currentQuestion?.questionType;
+    const nextPayload = payload || {};
+
+    if (actionPending) {
+      return;
+    }
+
+    if (questionType === "free_text") {
+      if (!normalizeTextAnswer(nextPayload.answerText)) {
+        return;
+      }
+    } else if (!Array.isArray(nextPayload.choiceIds) || !nextPayload.choiceIds.length) {
       return;
     }
 
@@ -940,7 +1160,7 @@ if (quizLivePlayerShell && quizLivePlayerDataScript) {
           "Content-Type": "application/json",
           Accept: "application/json"
         },
-        body: JSON.stringify({ choiceIds })
+        body: JSON.stringify(nextPayload)
       });
       const payload = await response.json();
 
@@ -949,9 +1169,8 @@ if (quizLivePlayerShell && quizLivePlayerDataScript) {
       }
 
       if (payload.snapshot) {
-        liveSnapshot = payload.snapshot;
-        boundarySyncKey = "";
-        render(liveSnapshot);
+        typedAnswerText = "";
+        applyServerSnapshot(payload.snapshot);
       }
     } catch (error) {
       window.alert(error.message);
@@ -966,6 +1185,7 @@ if (quizLivePlayerShell && quizLivePlayerDataScript) {
     if (
       choiceButton &&
       liveSnapshot.status === "question" &&
+      liveSnapshot.currentQuestion?.questionType !== "free_text" &&
       !liveSnapshot.participant?.hasAnsweredCurrentQuestion &&
       !actionPending
     ) {
@@ -984,21 +1204,52 @@ if (quizLivePlayerShell && quizLivePlayerDataScript) {
         selectedChoiceIds = [choiceId];
         triggerSelectionAnimation(choiceId);
         render(liveSnapshot);
-        submitAnswer(selectedChoiceIds);
+        submitAnswer({ choiceIds: selectedChoiceIds });
       }
       return;
     }
 
     const submitButton = event.target.closest("[data-player-submit]");
     if (submitButton && !actionPending) {
-      submitAnswer(selectedChoiceIds);
+      if (liveSnapshot.currentQuestion?.questionType === "free_text") {
+        submitAnswer({ answerText: typedAnswerText });
+        return;
+      }
+
+      submitAnswer({ choiceIds: selectedChoiceIds });
+    }
+  });
+
+  quizLivePlayerShell.addEventListener("input", (event) => {
+    if (!event.target.matches("[data-player-text-answer]")) {
+      return;
+    }
+
+    typedAnswerText = event.target.value;
+    const submitButton = quizLivePlayerShell.querySelector("[data-player-submit]");
+
+    if (submitButton) {
+      submitButton.disabled = !normalizeTextAnswer(typedAnswerText) || actionPending;
+    }
+  });
+
+  quizLivePlayerShell.addEventListener("keydown", (event) => {
+    if (
+      event.target.matches("[data-player-text-answer]") &&
+      event.key === "Enter" &&
+      !event.shiftKey &&
+      !actionPending
+    ) {
+      event.preventDefault();
+      submitAnswer({ answerText: typedAnswerText });
     }
   });
 
   render(liveSnapshot);
+  ensureRealtimeSubscription(liveSnapshot.sessionId).catch(() => {});
   window.setInterval(() => {
     loadState().catch(() => {});
-  }, 1000);
+  }, 15000);
   window.setInterval(() => {
     const countdown = quizLivePlayerShell.querySelector("[data-player-countdown]");
     if (countdown) {
@@ -1033,4 +1284,7 @@ if (quizLivePlayerShell && quizLivePlayerDataScript) {
       }
     }
   }, 250);
+  window.addEventListener("beforeunload", () => {
+    Promise.resolve(realtimeSubscription?.unsubscribe?.()).catch(() => {});
+  });
 }

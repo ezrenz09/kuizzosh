@@ -24,6 +24,8 @@ const USE_POSTGRES = Boolean(RUNTIME_DATABASE_URL);
 const USE_SUPABASE_AUTH = Boolean(
   SUPABASE_URL && SUPABASE_ANON_KEY && SUPABASE_SERVICE_ROLE_KEY
 );
+const QUIZ_REALTIME_SNAPSHOT_EVENT = "snapshot";
+const QUIZ_REALTIME_PROGRESS_EVENT = "progress";
 
 if (!USE_POSTGRES) {
   if (process.env.VERCEL) {
@@ -196,6 +198,23 @@ function getSupabaseClientOptions() {
   };
 }
 
+function getQuizRealtimeChannelName(sessionId) {
+  const normalizedSessionId = Number.parseInt(String(sessionId || "").trim(), 10);
+  return Number.isInteger(normalizedSessionId) && normalizedSessionId > 0
+    ? `quiz-live:${normalizedSessionId}`
+    : "";
+}
+
+function buildQuizRealtimeClientConfig(sessionId = null) {
+  return {
+    enabled: USE_SUPABASE_AUTH,
+    supabaseUrl: USE_SUPABASE_AUTH ? SUPABASE_URL : "",
+    supabaseAnonKey: USE_SUPABASE_AUTH ? SUPABASE_ANON_KEY : "",
+    sessionId: sessionId || null,
+    channelName: getQuizRealtimeChannelName(sessionId)
+  };
+}
+
 async function createSupabasePublicClient() {
   if (!USE_SUPABASE_AUTH) {
     throw new Error("Supabase Auth is not configured.");
@@ -217,6 +236,118 @@ async function getSupabaseAdminClient() {
   }
 
   return supabaseAdminClientPromise;
+}
+
+function getQuizLiveSessionRealtimeStateKey(session) {
+  if (!session) {
+    return "";
+  }
+
+  return JSON.stringify({
+    id: Number(session.id || 0),
+    status: String(session.status || ""),
+    phaseMode: String(session.phase_mode || ""),
+    currentQuestionIndex: Number(session.current_question_index || 0),
+    phaseEndsAt: toIsoString(session.phase_ends_at || ""),
+    questionStartedAt: toIsoString(session.question_started_at || ""),
+    endedAt: toIsoString(session.ended_at || "")
+  });
+}
+
+function getQuizLiveProgressBatchSize(participantCount) {
+  const safeParticipantCount = Math.max(0, Number(participantCount || 0));
+
+  if (safeParticipantCount <= 10) {
+    return 1;
+  }
+
+  return Math.max(2, Math.min(10, Math.ceil(safeParticipantCount / 10)));
+}
+
+async function maybeBroadcastQuizLiveSessionTransition(previousSession, nextSession, options = {}) {
+  if (!previousSession || !nextSession || Number(previousSession.id || 0) !== Number(nextSession.id || 0)) {
+    return false;
+  }
+
+  const previousStateKey = getQuizLiveSessionRealtimeStateKey(previousSession);
+  const nextStateKey = getQuizLiveSessionRealtimeStateKey(nextSession);
+
+  if (!previousStateKey || previousStateKey === nextStateKey) {
+    return false;
+  }
+
+  return broadcastQuizLiveSnapshot(nextSession, options);
+}
+
+async function broadcastQuizLiveSnapshot(session, options = {}) {
+  const channelName = getQuizRealtimeChannelName(session?.id);
+
+  if (!USE_SUPABASE_AUTH || !channelName || !session) {
+    return false;
+  }
+
+  try {
+    const supabaseAdmin = await getSupabaseAdminClient();
+    const snapshot = await buildQuizLiveSnapshot(session, options);
+
+    if (!snapshot) {
+      return false;
+    }
+
+    const channel = supabaseAdmin.channel(channelName);
+    if (typeof channel.httpSend === "function") {
+      await channel.httpSend(QUIZ_REALTIME_SNAPSHOT_EVENT, {
+        snapshot
+      });
+    } else {
+      await channel.send({
+        type: "broadcast",
+        event: QUIZ_REALTIME_SNAPSHOT_EVENT,
+        payload: {
+          snapshot
+        }
+      });
+    }
+
+    await supabaseAdmin.removeChannel(channel);
+    return true;
+  } catch (error) {
+    console.error("Quiz live realtime broadcast failed:", error);
+    return false;
+  }
+}
+
+async function broadcastQuizLiveProgressUpdate(progressUpdate) {
+  const channelName = getQuizRealtimeChannelName(progressUpdate?.sessionId);
+
+  if (!USE_SUPABASE_AUTH || !channelName || !progressUpdate) {
+    return false;
+  }
+
+  try {
+    const supabaseAdmin = await getSupabaseAdminClient();
+    const channel = supabaseAdmin.channel(channelName);
+
+    if (typeof channel.httpSend === "function") {
+      await channel.httpSend(QUIZ_REALTIME_PROGRESS_EVENT, {
+        progress: progressUpdate
+      });
+    } else {
+      await channel.send({
+        type: "broadcast",
+        event: QUIZ_REALTIME_PROGRESS_EVENT,
+        payload: {
+          progress: progressUpdate
+        }
+      });
+    }
+
+    await supabaseAdmin.removeChannel(channel);
+    return true;
+  } catch (error) {
+    console.error("Quiz live realtime progress broadcast failed:", error);
+    return false;
+  }
 }
 
 function getSupabaseUserDisplayName(authUser) {
@@ -541,6 +672,32 @@ async function generateUniqueModuleQuizCode(usedCodes = null) {
   throw new Error("Unable to generate a unique module quiz code.");
 }
 
+async function generateUniqueFastClickCode(usedCodes = null) {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const roomCode = String(Math.floor(100000 + Math.random() * 900000));
+
+    if (usedCodes) {
+      if (!usedCodes.has(roomCode)) {
+        usedCodes.add(roomCode);
+        return roomCode;
+      }
+
+      continue;
+    }
+
+    const existingSession = await dbGet(
+      "SELECT id FROM fast_click_sessions WHERE room_code = ?",
+      [roomCode]
+    );
+
+    if (!existingSession) {
+      return roomCode;
+    }
+  }
+
+  throw new Error("Unable to generate a unique fast click code.");
+}
+
 function parseBooleanFlag(value, fallback = false) {
   if (value === undefined || value === null || value === "") {
     return fallback;
@@ -549,10 +706,13 @@ function parseBooleanFlag(value, fallback = false) {
   return value === true || value === "true" || value === "on" || value === 1 || value === "1";
 }
 
+const QUIZ_CHOICE_QUESTION_TYPES = ["single_choice", "multiple_choice", "true_false"];
+const QUIZ_SUPPORTED_QUESTION_TYPES = [...QUIZ_CHOICE_QUESTION_TYPES, "free_text"];
+const MAX_FREE_TEXT_ANSWER_LENGTH = 200;
+
 function normalizeQuestionType(value) {
   const questionType = String(value || "").trim();
-  const allowedTypes = ["single_choice", "multiple_choice", "true_false"];
-  return allowedTypes.includes(questionType) ? questionType : "single_choice";
+  return QUIZ_SUPPORTED_QUESTION_TYPES.includes(questionType) ? questionType : "single_choice";
 }
 
 function normalizeInteger(value, fallback, min, max) {
@@ -589,6 +749,19 @@ const QUIZ_LIVE_PHASES = {
 const QUIZ_CHART_DURATION_MS = 8000;
 const QUIZ_LEADERBOARD_DURATION_MS = 5000;
 const QUIZ_COUNTDOWN_DURATION_MS = 5000;
+const FAST_CLICK_STATUSES = {
+  LOBBY: "lobby",
+  COUNTDOWN: "countdown",
+  RED: "red",
+  GREEN: "green",
+  FINISHED: "finished"
+};
+const FAST_CLICK_DEFAULTS = {
+  title: "Fast Click",
+  countdownSeconds: 3,
+  minSignalDelayMs: 2000,
+  maxSignalDelayMs: 4500
+};
 
 function createRandomToken() {
   if (typeof crypto.randomUUID === "function") {
@@ -659,6 +832,27 @@ function clearQuizParticipantEntry(req, quizCode) {
   delete store[quizCode];
 }
 
+function getFastClickParticipantStore(req) {
+  if (!req.session.fastClickParticipantStore || typeof req.session.fastClickParticipantStore !== "object") {
+    req.session.fastClickParticipantStore = {};
+  }
+
+  return req.session.fastClickParticipantStore;
+}
+
+function getFastClickParticipantEntry(req, roomCode) {
+  return getFastClickParticipantStore(req)[roomCode] || null;
+}
+
+function setFastClickParticipantEntry(req, roomCode, entry) {
+  getFastClickParticipantStore(req)[roomCode] = entry;
+}
+
+function clearFastClickParticipantEntry(req, roomCode) {
+  const store = getFastClickParticipantStore(req);
+  delete store[roomCode];
+}
+
 function toOrderedArray(value) {
   if (Array.isArray(value)) {
     return value;
@@ -682,6 +876,33 @@ function createDefaultQuizChoice(index, overrides = {}) {
   };
 }
 
+function createDefaultFreeTextChoice(overrides = {}) {
+  return {
+    label: String(overrides.label || "").trim(),
+    isCorrect: true
+  };
+}
+
+function createDefaultQuestionChoices(questionType = "single_choice") {
+  if (questionType === "true_false") {
+    return [
+      createDefaultQuizChoice(1, { label: "True" }),
+      createDefaultQuizChoice(2, { label: "False", isCorrect: false })
+    ];
+  }
+
+  if (questionType === "free_text") {
+    return [createDefaultFreeTextChoice()];
+  }
+
+  return [
+    createDefaultQuizChoice(1),
+    createDefaultQuizChoice(2, { isCorrect: false }),
+    createDefaultQuizChoice(3, { isCorrect: false }),
+    createDefaultQuizChoice(4, { isCorrect: false })
+  ];
+}
+
 function normalizeQuizQuestionImage(value) {
   const imageValue = String(value || "").trim();
 
@@ -700,6 +921,28 @@ function normalizeQuizQuestionImage(value) {
   return "";
 }
 
+function normalizeFreeTextStoredValue(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, MAX_FREE_TEXT_ANSWER_LENGTH);
+}
+
+function normalizeFreeTextAnswer(value) {
+  return normalizeFreeTextStoredValue(value).toLowerCase();
+}
+
+function getQuestionCorrectFreeTextAnswer(question) {
+  if (!question?.choices?.length) {
+    return "";
+  }
+
+  const correctChoice =
+    question.choices.find((choice) => parseBooleanFlag(choice?.isCorrect, false)) || question.choices[0];
+
+  return normalizeFreeTextStoredValue(correctChoice?.label || "");
+}
+
 function createDefaultQuizQuestion(index = 1) {
   return {
     prompt: "",
@@ -708,12 +951,7 @@ function createDefaultQuizQuestion(index = 1) {
     points: 100,
     timeLimit: 20,
     showLeaderboard: false,
-    choices: [
-      createDefaultQuizChoice(1),
-      createDefaultQuizChoice(2, { isCorrect: false }),
-      createDefaultQuizChoice(3, { isCorrect: false }),
-      createDefaultQuizChoice(4, { isCorrect: false })
-    ]
+    choices: createDefaultQuestionChoices("single_choice")
   };
 }
 
@@ -746,19 +984,23 @@ function normalizeQuizBuilderState(rawState) {
     const rawQuestions = toOrderedArray(section?.questions);
     const questions = rawQuestions.map((question, questionIndex) => {
       const questionType = normalizeQuestionType(question?.questionType);
-      const fallbackChoices =
-        questionType === "true_false"
-          ? [
-              createDefaultQuizChoice(1, { label: "True" }),
-              createDefaultQuizChoice(2, { label: "False", isCorrect: false })
-            ]
-          : createDefaultQuizQuestion(questionIndex + 1).choices;
-
       const rawChoices = toOrderedArray(question?.choices);
-      const choices = (rawChoices.length ? rawChoices : fallbackChoices).map((choice, choiceIndex) => ({
-        label: String(choice?.label || "").trim() || fallbackChoices[choiceIndex]?.label || `Option ${choiceIndex + 1}`,
-        isCorrect: parseBooleanFlag(choice?.isCorrect, false)
-      }));
+      let choices = [];
+
+      if (questionType === "free_text") {
+        const normalizedAnswer =
+          getQuestionCorrectFreeTextAnswer({
+            choices: rawChoices.length ? rawChoices : createDefaultQuestionChoices("free_text")
+          }) || "";
+
+        choices = [createDefaultFreeTextChoice({ label: normalizedAnswer })];
+      } else {
+        const fallbackChoices = createDefaultQuestionChoices(questionType);
+        choices = (rawChoices.length ? rawChoices : fallbackChoices).map((choice, choiceIndex) => ({
+          label: String(choice?.label || "").trim() || fallbackChoices[choiceIndex]?.label || `Option ${choiceIndex + 1}`,
+          isCorrect: parseBooleanFlag(choice?.isCorrect, false)
+        }));
+      }
 
       return {
         prompt: String(question?.prompt || "").trim(),
@@ -805,16 +1047,33 @@ function validateQuizBuilderState(rawState) {
     for (let questionIndex = 0; questionIndex < section.questions.length; questionIndex += 1) {
       const question = section.questions[questionIndex];
       const hasPrompt = Boolean(String(question.prompt || "").trim());
-      const hasFilledChoice = question.choices.some((choice) => String(choice.label || "").trim());
+      const hasImage = Boolean(normalizeQuizQuestionImage(question.imageUrl));
+      const hasFilledChoice =
+        question.questionType === "free_text"
+          ? Boolean(getQuestionCorrectFreeTextAnswer(question))
+          : question.choices.some((choice) => String(choice.label || "").trim());
 
-      if (!hasPrompt && !hasFilledChoice) {
+      if (!hasPrompt && !hasFilledChoice && !hasImage) {
         question.choices =
           question.questionType === "true_false"
-            ? [
-                { label: "True", isCorrect: true },
-                { label: "False", isCorrect: false }
-              ]
+            ? createDefaultQuestionChoices("true_false")
+            : question.questionType === "free_text"
+              ? createDefaultQuestionChoices("free_text")
             : question.choices;
+        continue;
+      }
+
+      if (question.questionType === "free_text") {
+        const acceptedAnswer = getQuestionCorrectFreeTextAnswer(question);
+
+        if (!acceptedAnswer) {
+          return {
+            error: `Question ${questionIndex + 1} in section ${sectionIndex + 1} needs a correct free-text answer.`,
+            builderState
+          };
+        }
+
+        question.choices = [createDefaultFreeTextChoice({ label: acceptedAnswer })];
         continue;
       }
 
@@ -927,12 +1186,16 @@ async function ensureQuizQuestionColumns() {
     await dbRun(
       "ALTER TABLE quiz_questions ADD COLUMN IF NOT EXISTS image_url TEXT NOT NULL DEFAULT ''"
     );
+    await dbRun(
+      "ALTER TABLE quiz_questions ADD COLUMN IF NOT EXISTS is_free_text INTEGER NOT NULL DEFAULT 0"
+    );
     return;
   }
 
   const columns = await dbAll("PRAGMA table_info(quiz_questions)");
   const hasShowLeaderboard = columns.some((column) => column.name === "show_leaderboard");
   const hasImageUrl = columns.some((column) => column.name === "image_url");
+  const hasIsFreeText = columns.some((column) => column.name === "is_free_text");
 
   if (!hasShowLeaderboard) {
     await dbRun(
@@ -945,6 +1208,12 @@ async function ensureQuizQuestionColumns() {
       "ALTER TABLE quiz_questions ADD COLUMN image_url TEXT NOT NULL DEFAULT ''"
     );
   }
+
+  if (!hasIsFreeText) {
+    await dbRun(
+      "ALTER TABLE quiz_questions ADD COLUMN is_free_text INTEGER NOT NULL DEFAULT 0"
+    );
+  }
 }
 
 async function ensureQuizLiveSessionColumns() {
@@ -955,12 +1224,24 @@ async function ensureQuizLiveSessionColumns() {
     await dbRun(
       "ALTER TABLE quiz_live_sessions ADD COLUMN IF NOT EXISTS phase_ends_at TIMESTAMPTZ"
     );
+    await dbRun(
+      "ALTER TABLE quiz_live_sessions ADD COLUMN IF NOT EXISTS last_progress_broadcast_question_id INTEGER"
+    );
+    await dbRun(
+      "ALTER TABLE quiz_live_sessions ADD COLUMN IF NOT EXISTS last_progress_broadcast_answer_count INTEGER NOT NULL DEFAULT 0"
+    );
     return;
   }
 
   const columns = await dbAll("PRAGMA table_info(quiz_live_sessions)");
   const hasPhaseMode = columns.some((column) => column.name === "phase_mode");
   const hasPhaseEndsAt = columns.some((column) => column.name === "phase_ends_at");
+  const hasLastProgressQuestionId = columns.some(
+    (column) => column.name === "last_progress_broadcast_question_id"
+  );
+  const hasLastProgressAnswerCount = columns.some(
+    (column) => column.name === "last_progress_broadcast_answer_count"
+  );
 
   if (!hasPhaseMode) {
     await dbRun("ALTER TABLE quiz_live_sessions ADD COLUMN phase_mode TEXT");
@@ -968,6 +1249,106 @@ async function ensureQuizLiveSessionColumns() {
 
   if (!hasPhaseEndsAt) {
     await dbRun("ALTER TABLE quiz_live_sessions ADD COLUMN phase_ends_at TEXT");
+  }
+
+  if (!hasLastProgressQuestionId) {
+    await dbRun(
+      "ALTER TABLE quiz_live_sessions ADD COLUMN last_progress_broadcast_question_id INTEGER"
+    );
+  }
+
+  if (!hasLastProgressAnswerCount) {
+    await dbRun(
+      "ALTER TABLE quiz_live_sessions ADD COLUMN last_progress_broadcast_answer_count INTEGER NOT NULL DEFAULT 0"
+    );
+  }
+}
+
+async function ensureQuizLiveAnswerColumns() {
+  if (USE_POSTGRES) {
+    await dbRun(
+      "ALTER TABLE quiz_live_answers ADD COLUMN IF NOT EXISTS submitted_text TEXT NOT NULL DEFAULT ''"
+    );
+    return;
+  }
+
+  const columns = await dbAll("PRAGMA table_info(quiz_live_answers)");
+  const hasSubmittedText = columns.some((column) => column.name === "submitted_text");
+
+  if (!hasSubmittedText) {
+    await dbRun(
+      "ALTER TABLE quiz_live_answers ADD COLUMN submitted_text TEXT NOT NULL DEFAULT ''"
+    );
+  }
+}
+
+async function ensureFastClickSessionColumns() {
+  if (USE_POSTGRES) {
+    await dbRun(
+      "ALTER TABLE fast_click_sessions ADD COLUMN IF NOT EXISTS green_starts_at TIMESTAMPTZ"
+    );
+    await dbRun(
+      "ALTER TABLE fast_click_sessions ADD COLUMN IF NOT EXISTS countdown_seconds INTEGER NOT NULL DEFAULT 3"
+    );
+    await dbRun(
+      "ALTER TABLE fast_click_sessions ADD COLUMN IF NOT EXISTS min_signal_delay_ms INTEGER NOT NULL DEFAULT 2000"
+    );
+    await dbRun(
+      "ALTER TABLE fast_click_sessions ADD COLUMN IF NOT EXISTS max_signal_delay_ms INTEGER NOT NULL DEFAULT 4500"
+    );
+    return;
+  }
+
+  const columns = await dbAll("PRAGMA table_info(fast_click_sessions)");
+  const hasGreenStartsAt = columns.some((column) => column.name === "green_starts_at");
+  const hasCountdownSeconds = columns.some((column) => column.name === "countdown_seconds");
+  const hasMinSignalDelayMs = columns.some((column) => column.name === "min_signal_delay_ms");
+  const hasMaxSignalDelayMs = columns.some((column) => column.name === "max_signal_delay_ms");
+
+  if (!hasGreenStartsAt) {
+    await dbRun("ALTER TABLE fast_click_sessions ADD COLUMN green_starts_at TEXT");
+  }
+
+  if (!hasCountdownSeconds) {
+    await dbRun(
+      "ALTER TABLE fast_click_sessions ADD COLUMN countdown_seconds INTEGER NOT NULL DEFAULT 3"
+    );
+  }
+
+  if (!hasMinSignalDelayMs) {
+    await dbRun(
+      "ALTER TABLE fast_click_sessions ADD COLUMN min_signal_delay_ms INTEGER NOT NULL DEFAULT 2000"
+    );
+  }
+
+  if (!hasMaxSignalDelayMs) {
+    await dbRun(
+      "ALTER TABLE fast_click_sessions ADD COLUMN max_signal_delay_ms INTEGER NOT NULL DEFAULT 4500"
+    );
+  }
+}
+
+async function ensureFastClickParticipantColumns() {
+  if (USE_POSTGRES) {
+    await dbRun(
+      "ALTER TABLE fast_click_participants ADD COLUMN IF NOT EXISTS reaction_time_ms INTEGER"
+    );
+    await dbRun(
+      "ALTER TABLE fast_click_participants ADD COLUMN IF NOT EXISTS clicked_at TIMESTAMPTZ"
+    );
+    return;
+  }
+
+  const columns = await dbAll("PRAGMA table_info(fast_click_participants)");
+  const hasReactionTimeMs = columns.some((column) => column.name === "reaction_time_ms");
+  const hasClickedAt = columns.some((column) => column.name === "clicked_at");
+
+  if (!hasReactionTimeMs) {
+    await dbRun("ALTER TABLE fast_click_participants ADD COLUMN reaction_time_ms INTEGER");
+  }
+
+  if (!hasClickedAt) {
+    await dbRun("ALTER TABLE fast_click_participants ADD COLUMN clicked_at TEXT");
   }
 }
 
@@ -1160,6 +1541,7 @@ async function initializeDatabase() {
         prompt TEXT NOT NULL,
         image_url TEXT NOT NULL DEFAULT '',
         question_type TEXT NOT NULL CHECK (question_type IN ('single_choice', 'multiple_choice', 'true_false')),
+        is_free_text INTEGER NOT NULL DEFAULT 0,
         points INTEGER NOT NULL DEFAULT 100,
         time_limit INTEGER NOT NULL DEFAULT 20,
         show_leaderboard INTEGER NOT NULL DEFAULT 0,
@@ -1189,6 +1571,8 @@ async function initializeDatabase() {
         current_question_index INTEGER NOT NULL DEFAULT 0,
         question_started_at TIMESTAMPTZ,
         phase_ends_at TIMESTAMPTZ,
+        last_progress_broadcast_question_id INTEGER,
+        last_progress_broadcast_answer_count INTEGER NOT NULL DEFAULT 0,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
         started_at TIMESTAMPTZ,
@@ -1214,9 +1598,42 @@ async function initializeDatabase() {
         participant_id INTEGER NOT NULL REFERENCES quiz_live_participants (id) ON DELETE CASCADE,
         question_id INTEGER NOT NULL REFERENCES quiz_questions (id) ON DELETE CASCADE,
         selected_choice_ids TEXT NOT NULL,
+        submitted_text TEXT NOT NULL DEFAULT '',
         is_correct INTEGER NOT NULL DEFAULT 0,
         response_time_ms INTEGER NOT NULL DEFAULT 0,
         submitted_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await dbRun(`
+      CREATE TABLE IF NOT EXISTS fast_click_sessions (
+        id SERIAL PRIMARY KEY,
+        host_user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        room_code TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL CHECK (status IN ('lobby', 'countdown', 'red', 'green', 'finished')),
+        countdown_seconds INTEGER NOT NULL DEFAULT 3,
+        min_signal_delay_ms INTEGER NOT NULL DEFAULT 2000,
+        max_signal_delay_ms INTEGER NOT NULL DEFAULT 4500,
+        phase_ends_at TIMESTAMPTZ,
+        green_starts_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        started_at TIMESTAMPTZ,
+        ended_at TIMESTAMPTZ
+      )
+    `);
+
+    await dbRun(`
+      CREATE TABLE IF NOT EXISTS fast_click_participants (
+        id SERIAL PRIMARY KEY,
+        session_id INTEGER NOT NULL REFERENCES fast_click_sessions (id) ON DELETE CASCADE,
+        display_name TEXT NOT NULL,
+        join_token TEXT NOT NULL UNIQUE,
+        reaction_time_ms INTEGER,
+        joined_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        clicked_at TIMESTAMPTZ,
+        last_seen_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
@@ -1247,9 +1664,18 @@ async function initializeDatabase() {
     await dbRun(
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_quiz_live_answers_unique ON quiz_live_answers(session_id, participant_id, question_id)"
     );
+    await dbRun(
+      "CREATE INDEX IF NOT EXISTS idx_fast_click_sessions_host_created ON fast_click_sessions(host_user_id, created_at)"
+    );
+    await dbRun(
+      "CREATE INDEX IF NOT EXISTS idx_fast_click_participants_session_joined ON fast_click_participants(session_id, joined_at)"
+    );
 
     await ensureQuizQuestionColumns();
     await ensureQuizLiveSessionColumns();
+    await ensureQuizLiveAnswerColumns();
+    await ensureFastClickSessionColumns();
+    await ensureFastClickParticipantColumns();
     await ensureUserAuthColumns();
 
     return;
@@ -1333,6 +1759,7 @@ async function initializeDatabase() {
       prompt TEXT NOT NULL,
       image_url TEXT NOT NULL DEFAULT '',
       question_type TEXT NOT NULL CHECK (question_type IN ('single_choice', 'multiple_choice', 'true_false')),
+      is_free_text INTEGER NOT NULL DEFAULT 0,
       points INTEGER NOT NULL DEFAULT 100,
       time_limit INTEGER NOT NULL DEFAULT 20,
       show_leaderboard INTEGER NOT NULL DEFAULT 0,
@@ -1364,6 +1791,8 @@ async function initializeDatabase() {
       current_question_index INTEGER NOT NULL DEFAULT 0,
       question_started_at TEXT,
       phase_ends_at TEXT,
+      last_progress_broadcast_question_id INTEGER,
+      last_progress_broadcast_answer_count INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       started_at TEXT,
@@ -1392,12 +1821,47 @@ async function initializeDatabase() {
       participant_id INTEGER NOT NULL,
       question_id INTEGER NOT NULL,
       selected_choice_ids TEXT NOT NULL,
+      submitted_text TEXT NOT NULL DEFAULT '',
       is_correct INTEGER NOT NULL DEFAULT 0,
       response_time_ms INTEGER NOT NULL DEFAULT 0,
       submitted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (session_id) REFERENCES quiz_live_sessions (id),
       FOREIGN KEY (participant_id) REFERENCES quiz_live_participants (id),
       FOREIGN KEY (question_id) REFERENCES quiz_questions (id)
+    )
+  `);
+
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS fast_click_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      host_user_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      room_code TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL CHECK (status IN ('lobby', 'countdown', 'red', 'green', 'finished')),
+      countdown_seconds INTEGER NOT NULL DEFAULT 3,
+      min_signal_delay_ms INTEGER NOT NULL DEFAULT 2000,
+      max_signal_delay_ms INTEGER NOT NULL DEFAULT 4500,
+      phase_ends_at TEXT,
+      green_starts_at TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      started_at TEXT,
+      ended_at TEXT,
+      FOREIGN KEY (host_user_id) REFERENCES users (id)
+    )
+  `);
+
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS fast_click_participants (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL,
+      display_name TEXT NOT NULL,
+      join_token TEXT NOT NULL UNIQUE,
+      reaction_time_ms INTEGER,
+      joined_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      clicked_at TEXT,
+      last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (session_id) REFERENCES fast_click_sessions (id)
     )
   `);
 
@@ -1413,9 +1877,18 @@ async function initializeDatabase() {
   await dbRun(
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_quiz_live_answers_unique ON quiz_live_answers(session_id, participant_id, question_id)"
   );
+  await dbRun(
+    "CREATE INDEX IF NOT EXISTS idx_fast_click_sessions_host_created ON fast_click_sessions(host_user_id, created_at)"
+  );
+  await dbRun(
+    "CREATE INDEX IF NOT EXISTS idx_fast_click_participants_session_joined ON fast_click_participants(session_id, joined_at)"
+  );
 
   await ensureQuizQuestionColumns();
   await ensureQuizLiveSessionColumns();
+  await ensureQuizLiveAnswerColumns();
+  await ensureFastClickSessionColumns();
+  await ensureFastClickParticipantColumns();
   await ensureUserAuthColumns();
 }
 
@@ -1589,12 +2062,12 @@ async function loadQuizBuilderState(moduleItemId) {
   const nestedSections = [];
 
   for (const section of sections) {
-    const questions = await dbAll(
-      `
-        SELECT id, prompt, image_url, question_type, points, time_limit, show_leaderboard, position
-        FROM quiz_questions
-        WHERE section_id = ?
-        ORDER BY position ASC, id ASC
+      const questions = await dbAll(
+        `
+          SELECT id, prompt, image_url, question_type, is_free_text, points, time_limit, show_leaderboard, position
+          FROM quiz_questions
+          WHERE section_id = ?
+          ORDER BY position ASC, id ASC
       `,
       [section.id]
     );
@@ -1616,7 +2089,7 @@ async function loadQuizBuilderState(moduleItemId) {
         id: question.id,
         prompt: question.prompt,
         imageUrl: normalizeQuizQuestionImage(question.image_url),
-        questionType: question.question_type,
+        questionType: Number(question.is_free_text) ? "free_text" : question.question_type,
         points: question.points,
         timeLimit: question.time_limit,
         showLeaderboard: Boolean(question.show_leaderboard),
@@ -1626,7 +2099,7 @@ async function loadQuizBuilderState(moduleItemId) {
               label: choice.label,
               isCorrect: Boolean(choice.is_correct)
             }))
-          : createDefaultQuizQuestion(1).choices
+          : createDefaultQuestionChoices(Number(question.is_free_text) ? "free_text" : question.question_type)
       });
     }
 
@@ -1715,6 +2188,9 @@ async function saveQuizBuilder(moduleItemId, settings, builderState) {
 
       for (let questionIndex = 0; questionIndex < section.questions.length; questionIndex += 1) {
         const question = section.questions[questionIndex];
+        const normalizedQuestionType = normalizeQuestionType(question.questionType);
+        const isFreeTextQuestion = normalizedQuestionType === "free_text";
+        const persistedQuestionType = isFreeTextQuestion ? "single_choice" : normalizedQuestionType;
         const questionResult = await dbRun(
           `
             INSERT INTO quiz_questions (
@@ -1722,18 +2198,20 @@ async function saveQuizBuilder(moduleItemId, settings, builderState) {
               prompt,
               image_url,
               question_type,
+              is_free_text,
               points,
               time_limit,
               show_leaderboard,
               position
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
           [
             sectionResult.lastID,
             question.prompt,
             normalizeQuizQuestionImage(question.imageUrl),
-            question.questionType,
+            persistedQuestionType,
+            isFreeTextQuestion ? 1 : 0,
             question.points,
             question.timeLimit,
             question.showLeaderboard ? 1 : 0,
@@ -1938,9 +2416,11 @@ async function createQuizLiveSession(moduleItemId, hostUserId) {
         phase_mode,
         current_question_index,
         phase_ends_at,
+        last_progress_broadcast_question_id,
+        last_progress_broadcast_answer_count,
         updated_at
       )
-      VALUES (?, ?, ?, NULL, 0, NULL, CURRENT_TIMESTAMP)
+      VALUES (?, ?, ?, NULL, 0, NULL, NULL, 0, CURRENT_TIMESTAMP)
     `,
     [moduleItemId, hostUserId, QUIZ_LIVE_STATUSES.LOBBY]
   );
@@ -2048,6 +2528,16 @@ async function updateQuizLiveSessionState(sessionId, changes) {
   if (Object.prototype.hasOwnProperty.call(changes, "phaseEndsAt")) {
     assignments.push("phase_ends_at = ?");
     params.push(changes.phaseEndsAt);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(changes, "lastProgressBroadcastQuestionId")) {
+    assignments.push("last_progress_broadcast_question_id = ?");
+    params.push(changes.lastProgressBroadcastQuestionId);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(changes, "lastProgressBroadcastAnswerCount")) {
+    assignments.push("last_progress_broadcast_answer_count = ?");
+    params.push(changes.lastProgressBroadcastAnswerCount);
   }
 
   if (Object.prototype.hasOwnProperty.call(changes, "startedAt")) {
@@ -2166,6 +2656,142 @@ async function buildQuizLeaderboard(sessionId, questions, upToQuestionIndex) {
   }));
 }
 
+async function buildQuizLiveQuestionProgressUpdate(session, options = {}) {
+  if (!session || session.status !== QUIZ_LIVE_STATUSES.QUESTION) {
+    return null;
+  }
+
+  const questions =
+    options.questions ||
+    (session.module_item_id ? await loadQuizLiveQuestions(session.module_item_id) : []);
+  const currentQuestion = options.question || questions[Number(session.current_question_index || 0)] || null;
+
+  if (!currentQuestion?.id) {
+    return null;
+  }
+
+  const participantCountRow = await dbGet(
+    `
+      SELECT COUNT(*) AS participant_count
+      FROM quiz_live_participants
+      WHERE session_id = ?
+    `,
+    [session.id]
+  );
+  const answerStatsRow = await dbGet(
+    `
+      SELECT
+        COUNT(*) AS answered_count,
+        COALESCE(SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END), 0) AS correct_response_count,
+        COALESCE(SUM(CASE WHEN TRIM(submitted_text) <> '' THEN 1 ELSE 0 END), 0) AS typed_response_count
+      FROM quiz_live_answers
+      WHERE session_id = ? AND question_id = ?
+    `,
+    [session.id, currentQuestion.id]
+  );
+  const participantCount = Number(participantCountRow?.participant_count || 0);
+  const answeredCount = Number(answerStatsRow?.answered_count || 0);
+  const correctResponseCount = Number(answerStatsRow?.correct_response_count || 0);
+  const typedResponseCount = Number(answerStatsRow?.typed_response_count || 0);
+
+  return {
+    sessionId: session.id,
+    serverNow: new Date().toISOString(),
+    status: session.status,
+    phaseMode: String(session.phase_mode || ""),
+    currentQuestionId: currentQuestion.id,
+    participantCount,
+    answeredCount,
+    unansweredCount: Math.max(0, participantCount - answeredCount),
+    answeredPercentage: participantCount
+      ? Math.round((answeredCount / participantCount) * 100)
+      : 0,
+    currentQuestion: {
+      id: currentQuestion.id,
+      questionType: currentQuestion.questionType,
+      correctResponseCount,
+      incorrectResponseCount: Math.max(0, answeredCount - correctResponseCount),
+      typedResponseCount
+    }
+  };
+}
+
+async function claimQuizLiveQuestionProgressBroadcast(sessionId, questionId, answeredCount) {
+  if (!sessionId || !questionId || answeredCount < 0) {
+    return false;
+  }
+
+  if (USE_POSTGRES) {
+    const updatedSession = await dbGet(
+      `
+        UPDATE quiz_live_sessions
+        SET
+          last_progress_broadcast_question_id = ?,
+          last_progress_broadcast_answer_count = ?
+        WHERE
+          id = ?
+          AND (
+            COALESCE(last_progress_broadcast_question_id, 0) <> ?
+            OR COALESCE(last_progress_broadcast_answer_count, -1) < ?
+          )
+        RETURNING id
+      `,
+      [questionId, answeredCount, sessionId, questionId, answeredCount]
+    );
+
+    return Boolean(updatedSession?.id);
+  }
+
+  const updateResult = await dbRun(
+    `
+      UPDATE quiz_live_sessions
+      SET
+        last_progress_broadcast_question_id = ?,
+        last_progress_broadcast_answer_count = ?
+      WHERE
+        id = ?
+        AND (
+          COALESCE(last_progress_broadcast_question_id, 0) <> ?
+          OR COALESCE(last_progress_broadcast_answer_count, -1) < ?
+        )
+    `,
+    [questionId, answeredCount, sessionId, questionId, answeredCount]
+  );
+
+  return Number(updateResult?.changes || 0) > 0;
+}
+
+async function maybeBroadcastQuizLiveQuestionProgress(session, options = {}) {
+  const progressUpdate = await buildQuizLiveQuestionProgressUpdate(session, options);
+
+  if (!progressUpdate) {
+    return false;
+  }
+
+  const batchSize = getQuizLiveProgressBatchSize(progressUpdate.participantCount);
+  const shouldBroadcastProgress =
+    options.force === true ||
+    progressUpdate.answeredCount === 1 ||
+    progressUpdate.answeredCount === progressUpdate.participantCount ||
+    (batchSize > 0 && progressUpdate.answeredCount > 0 && progressUpdate.answeredCount % batchSize === 0);
+
+  if (!shouldBroadcastProgress) {
+    return false;
+  }
+
+  const claimed = await claimQuizLiveQuestionProgressBroadcast(
+    session.id,
+    progressUpdate.currentQuestionId,
+    progressUpdate.answeredCount
+  );
+
+  if (!claimed) {
+    return false;
+  }
+
+  return broadcastQuizLiveProgressUpdate(progressUpdate);
+}
+
 async function buildQuizLiveSnapshot(session, options = {}) {
   const item =
     options.item ||
@@ -2210,7 +2836,7 @@ async function buildQuizLiveSnapshot(session, options = {}) {
   const currentQuestionAnswers = currentQuestion?.id
     ? await dbAll(
         `
-          SELECT participant_id, selected_choice_ids, is_correct, response_time_ms, submitted_at
+          SELECT participant_id, selected_choice_ids, submitted_text, is_correct, response_time_ms, submitted_at
           FROM quiz_live_answers
           WHERE session_id = ? AND question_id = ?
           ORDER BY submitted_at ASC, id ASC
@@ -2220,6 +2846,12 @@ async function buildQuizLiveSnapshot(session, options = {}) {
     : [];
   const answeredCount = currentQuestionAnswers.length;
   const selectedCountByChoiceId = new Map();
+  const freeTextCorrectAnswer =
+    currentQuestion?.questionType === "free_text" ? getQuestionCorrectFreeTextAnswer(currentQuestion) : "";
+  const freeTextCorrectCount = currentQuestionAnswers.filter((answer) => Boolean(answer.is_correct)).length;
+  const freeTextTypedCount = currentQuestionAnswers.filter((answer) =>
+    Boolean(normalizeFreeTextAnswer(answer.submitted_text))
+  ).length;
 
   currentQuestionAnswers.forEach((answer) => {
     parseChoiceIdList(answer.selected_choice_ids).forEach((choiceId) => {
@@ -2295,15 +2927,30 @@ async function buildQuizLiveSnapshot(session, options = {}) {
           showLeaderboard: Boolean(currentQuestion.showLeaderboard),
           position: safeQuestionIndex + 1,
           sectionTitle: currentQuestion.sectionTitle,
-          choices: currentQuestion.choices.map((choice) => ({
-            id: choice.id,
-            label: choice.label,
-            isCorrect: revealAnswersToClient ? Boolean(choice.isCorrect) : false,
-            selectedCount: selectedCountByChoiceId.get(choice.id) || 0,
-            selectedPercent: participants.length
-              ? Math.round(((selectedCountByChoiceId.get(choice.id) || 0) / participants.length) * 100)
-              : 0
-          }))
+          acceptedAnswer:
+            revealAnswersToClient && currentQuestion.questionType === "free_text"
+              ? freeTextCorrectAnswer
+              : "",
+          correctResponseCount:
+            currentQuestion.questionType === "free_text" ? freeTextCorrectCount : null,
+          incorrectResponseCount:
+            currentQuestion.questionType === "free_text"
+              ? Math.max(0, answeredCount - freeTextCorrectCount)
+              : null,
+          typedResponseCount:
+            currentQuestion.questionType === "free_text" ? freeTextTypedCount : null,
+          choices:
+            currentQuestion.questionType === "free_text" && !revealAnswersToClient && !options.forHost
+              ? []
+              : currentQuestion.choices.map((choice) => ({
+                  id: choice.id,
+                  label: choice.label,
+                  isCorrect: revealAnswersToClient ? Boolean(choice.isCorrect) : false,
+                  selectedCount: selectedCountByChoiceId.get(choice.id) || 0,
+                  selectedPercent: participants.length
+                    ? Math.round(((selectedCountByChoiceId.get(choice.id) || 0) / participants.length) * 100)
+                    : 0
+                }))
         }
       : null,
     leaderboard,
@@ -2311,16 +2958,672 @@ async function buildQuizLiveSnapshot(session, options = {}) {
       ? {
           id: participantId,
           hasAnsweredCurrentQuestion: Boolean(participantAnswer),
-          selectedChoiceIds: parseChoiceIdList(participantAnswer?.selected_choice_ids || ""),
-          lastAnswerCorrect: participantAnswer ? Boolean(participantAnswer.is_correct) : null,
-          lastResponseTimeMs: participantAnswer
-            ? Number(participantAnswer.response_time_ms || 0)
+        selectedChoiceIds: parseChoiceIdList(participantAnswer?.selected_choice_ids || ""),
+        submittedText: participantAnswer ? String(participantAnswer.submitted_text || "") : "",
+        lastAnswerCorrect: participantAnswer ? Boolean(participantAnswer.is_correct) : null,
+        lastResponseTimeMs: participantAnswer
+          ? Number(participantAnswer.response_time_ms || 0)
             : null,
           rank: currentParticipantRank
         }
       : null,
     canGoLive: questions.some((question) => question.id)
   };
+}
+
+function normalizeFastClickTitle(value) {
+  return String(value || "").trim().slice(0, 120) || FAST_CLICK_DEFAULTS.title;
+}
+
+function normalizeFastClickCountdownSeconds(value) {
+  const parsedValue = Number.parseInt(String(value || ""), 10);
+  return Number.isInteger(parsedValue) ? Math.max(2, Math.min(10, parsedValue)) : FAST_CLICK_DEFAULTS.countdownSeconds;
+}
+
+function normalizeFastClickDelayMs(value, fallbackValue) {
+  const parsedValue = Number.parseInt(String(value || ""), 10);
+  return Number.isInteger(parsedValue) ? Math.max(500, Math.min(10000, parsedValue)) : fallbackValue;
+}
+
+function normalizeFastClickSettings(input = {}) {
+  const countdownSeconds = normalizeFastClickCountdownSeconds(input.countdownSeconds);
+  const minSignalDelayMs = normalizeFastClickDelayMs(
+    input.minSignalDelayMs,
+    FAST_CLICK_DEFAULTS.minSignalDelayMs
+  );
+  const maxSignalDelayMs = Math.max(
+    minSignalDelayMs,
+    normalizeFastClickDelayMs(input.maxSignalDelayMs, FAST_CLICK_DEFAULTS.maxSignalDelayMs)
+  );
+
+  return {
+    title: normalizeFastClickTitle(input.title),
+    countdownSeconds,
+    minSignalDelayMs,
+    maxSignalDelayMs
+  };
+}
+
+function formatMillisecondsLabel(value) {
+  const safeValue = Number(value || 0);
+  return `${(safeValue / 1000).toFixed(3)}s`;
+}
+
+function getFastClickRealtimeChannelName(sessionId) {
+  const normalizedSessionId = Number.parseInt(String(sessionId || "").trim(), 10);
+  return Number.isInteger(normalizedSessionId) && normalizedSessionId > 0
+    ? `fast-click:${normalizedSessionId}`
+    : "";
+}
+
+function buildFastClickRealtimeClientConfig(sessionId = null) {
+  return {
+    enabled: USE_SUPABASE_AUTH,
+    supabaseUrl: USE_SUPABASE_AUTH ? SUPABASE_URL : "",
+    supabaseAnonKey: USE_SUPABASE_AUTH ? SUPABASE_ANON_KEY : "",
+    sessionId: sessionId || null,
+    channelName: getFastClickRealtimeChannelName(sessionId)
+  };
+}
+
+async function broadcastFastClickSnapshot(session, options = {}) {
+  const channelName = getFastClickRealtimeChannelName(session?.id);
+
+  if (!USE_SUPABASE_AUTH || !channelName || !session) {
+    return false;
+  }
+
+  try {
+    const supabaseAdmin = await getSupabaseAdminClient();
+    const snapshot = await buildFastClickSnapshot(session, options);
+
+    if (!snapshot) {
+      return false;
+    }
+
+    const channel = supabaseAdmin.channel(channelName);
+
+    if (typeof channel.httpSend === "function") {
+      await channel.httpSend(QUIZ_REALTIME_SNAPSHOT_EVENT, {
+        snapshot
+      });
+    } else {
+      await channel.send({
+        type: "broadcast",
+        event: QUIZ_REALTIME_SNAPSHOT_EVENT,
+        payload: {
+          snapshot
+        }
+      });
+    }
+
+    await supabaseAdmin.removeChannel(channel);
+    return true;
+  } catch (error) {
+    console.error("Fast click realtime broadcast failed:", error);
+    return false;
+  }
+}
+
+async function getFastClickSessionById(sessionId) {
+  return dbGet("SELECT * FROM fast_click_sessions WHERE id = ?", [sessionId]);
+}
+
+async function getFastClickSessionByRoomCode(roomCode) {
+  return dbGet(
+    `
+      SELECT *
+      FROM fast_click_sessions
+      WHERE room_code = ?
+    `,
+    [roomCode]
+  );
+}
+
+async function getOwnedFastClickSession(userId, sessionId) {
+  return dbGet(
+    `
+      SELECT *
+      FROM fast_click_sessions
+      WHERE id = ? AND host_user_id = ?
+    `,
+    [sessionId, userId]
+  );
+}
+
+async function getUserFastClickSessions(userId) {
+  return dbAll(
+    `
+      SELECT *
+      FROM fast_click_sessions
+      WHERE host_user_id = ?
+      ORDER BY created_at DESC, id DESC
+      LIMIT 8
+    `,
+    [userId]
+  );
+}
+
+async function createFastClickSession(hostUserId, input = {}) {
+  const settings = normalizeFastClickSettings(input);
+  const roomCode = await generateUniqueFastClickCode();
+  const result = await dbRun(
+    `
+      INSERT INTO fast_click_sessions (
+        host_user_id,
+        title,
+        room_code,
+        status,
+        countdown_seconds,
+        min_signal_delay_ms,
+        max_signal_delay_ms,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `,
+    [
+      hostUserId,
+      settings.title,
+      roomCode,
+      FAST_CLICK_STATUSES.LOBBY,
+      settings.countdownSeconds,
+      settings.minSignalDelayMs,
+      settings.maxSignalDelayMs
+    ]
+  );
+
+  return getFastClickSessionById(result.lastID);
+}
+
+async function updateFastClickSessionState(sessionId, changes = {}) {
+  const assignments = [];
+  const params = [];
+
+  if (Object.prototype.hasOwnProperty.call(changes, "title")) {
+    assignments.push("title = ?");
+    params.push(changes.title);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(changes, "status")) {
+    assignments.push("status = ?");
+    params.push(changes.status);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(changes, "phaseEndsAt")) {
+    assignments.push("phase_ends_at = ?");
+    params.push(changes.phaseEndsAt);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(changes, "greenStartsAt")) {
+    assignments.push("green_starts_at = ?");
+    params.push(changes.greenStartsAt);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(changes, "startedAt")) {
+    assignments.push("started_at = ?");
+    params.push(changes.startedAt);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(changes, "endedAt")) {
+    assignments.push("ended_at = ?");
+    params.push(changes.endedAt);
+  }
+
+  if (!assignments.length) {
+    return getFastClickSessionById(sessionId);
+  }
+
+  assignments.push("updated_at = CURRENT_TIMESTAMP");
+  params.push(sessionId);
+
+  await dbRun(
+    `
+      UPDATE fast_click_sessions
+      SET ${assignments.join(", ")}
+      WHERE id = ?
+    `,
+    params
+  );
+
+  return getFastClickSessionById(sessionId);
+}
+
+async function startFastClickSession(session) {
+  const now = new Date();
+  const minDelay = Number(session.min_signal_delay_ms || FAST_CLICK_DEFAULTS.minSignalDelayMs);
+  const maxDelay = Math.max(minDelay, Number(session.max_signal_delay_ms || FAST_CLICK_DEFAULTS.maxSignalDelayMs));
+  const signalDelayMs = minDelay + Math.floor(Math.random() * (maxDelay - minDelay + 1));
+  const countdownEndsAt = new Date(
+    now.getTime() + Number(session.countdown_seconds || FAST_CLICK_DEFAULTS.countdownSeconds) * 1000
+  );
+  const greenStartsAt = new Date(countdownEndsAt.getTime() + signalDelayMs);
+
+  return updateFastClickSessionState(session.id, {
+    status: FAST_CLICK_STATUSES.COUNTDOWN,
+    phaseEndsAt: countdownEndsAt.toISOString(),
+    greenStartsAt: greenStartsAt.toISOString(),
+    startedAt: session.started_at || now.toISOString(),
+    endedAt: null
+  });
+}
+
+async function finishFastClickSession(sessionId) {
+  return updateFastClickSessionState(sessionId, {
+    status: FAST_CLICK_STATUSES.FINISHED,
+    phaseEndsAt: null,
+    endedAt: new Date().toISOString()
+  });
+}
+
+async function syncFastClickSession(session) {
+  let currentSession = session;
+
+  for (let step = 0; step < 4; step += 1) {
+    if (
+      !currentSession ||
+      currentSession.status === FAST_CLICK_STATUSES.LOBBY ||
+      currentSession.status === FAST_CLICK_STATUSES.GREEN ||
+      currentSession.status === FAST_CLICK_STATUSES.FINISHED
+    ) {
+      return currentSession;
+    }
+
+    const phaseEndsAt = currentSession.phase_ends_at
+      ? new Date(currentSession.phase_ends_at).getTime()
+      : 0;
+
+    if (!phaseEndsAt || Date.now() < phaseEndsAt) {
+      return currentSession;
+    }
+
+    if (currentSession.status === FAST_CLICK_STATUSES.COUNTDOWN) {
+      currentSession = await updateFastClickSessionState(currentSession.id, {
+        status: FAST_CLICK_STATUSES.RED,
+        phaseEndsAt: toIsoString(currentSession.green_starts_at)
+      });
+      continue;
+    }
+
+    if (currentSession.status === FAST_CLICK_STATUSES.RED) {
+      currentSession = await updateFastClickSessionState(currentSession.id, {
+        status: FAST_CLICK_STATUSES.GREEN,
+        phaseEndsAt: null
+      });
+      continue;
+    }
+  }
+
+  return currentSession;
+}
+
+async function getFastClickParticipants(sessionId) {
+  return dbAll(
+    `
+      SELECT id, display_name, join_token, reaction_time_ms, joined_at, clicked_at, last_seen_at
+      FROM fast_click_participants
+      WHERE session_id = ?
+      ORDER BY joined_at ASC, id ASC
+    `,
+    [sessionId]
+  );
+}
+
+async function touchFastClickParticipant(participantId) {
+  await dbRun(
+    "UPDATE fast_click_participants SET last_seen_at = CURRENT_TIMESTAMP WHERE id = ?",
+    [participantId]
+  );
+}
+
+async function buildUniqueFastClickParticipantName(sessionId, requestedName) {
+  const baseName = String(requestedName || "").trim().slice(0, 32) || "Player";
+  const existingRows = await dbAll(
+    `
+      SELECT display_name
+      FROM fast_click_participants
+      WHERE session_id = ?
+    `,
+    [sessionId]
+  );
+  const usedNames = new Set(existingRows.map((row) => String(row.display_name || "").toLowerCase()));
+
+  if (!usedNames.has(baseName.toLowerCase())) {
+    return baseName;
+  }
+
+  for (let suffix = 2; suffix <= 999; suffix += 1) {
+    const candidate = `${baseName.slice(0, Math.max(1, 29 - String(suffix).length))} ${suffix}`;
+
+    if (!usedNames.has(candidate.toLowerCase())) {
+      return candidate;
+    }
+  }
+
+  return `${baseName.slice(0, 27)} ${Date.now().toString().slice(-3)}`;
+}
+
+async function createFastClickParticipant(sessionId, displayName) {
+  const normalizedName = await buildUniqueFastClickParticipantName(sessionId, displayName);
+  const joinToken = createRandomToken();
+  const result = await dbRun(
+    `
+      INSERT INTO fast_click_participants (
+        session_id,
+        display_name,
+        join_token
+      )
+      VALUES (?, ?, ?)
+    `,
+    [sessionId, normalizedName, joinToken]
+  );
+
+  return dbGet(
+    `
+      SELECT id, display_name, join_token, reaction_time_ms, joined_at, clicked_at, last_seen_at
+      FROM fast_click_participants
+      WHERE id = ?
+    `,
+    [result.lastID]
+  );
+}
+
+async function recordFastClickReaction(participantId, reactionTimeMs) {
+  await dbRun(
+    `
+      UPDATE fast_click_participants
+      SET reaction_time_ms = ?, clicked_at = CURRENT_TIMESTAMP, last_seen_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND reaction_time_ms IS NULL
+    `,
+    [reactionTimeMs, participantId]
+  );
+
+  return dbGet(
+    `
+      SELECT id, display_name, join_token, reaction_time_ms, joined_at, clicked_at, last_seen_at
+      FROM fast_click_participants
+      WHERE id = ?
+    `,
+    [participantId]
+  );
+}
+
+function buildFastClickLeaderboard(participants) {
+  const leaderboardRows = participants
+    .filter((participant) => Number.isFinite(Number(participant.reaction_time_ms)))
+    .map((participant) => ({
+      participantId: participant.id,
+      displayName: participant.display_name,
+      reactionTimeMs: Number(participant.reaction_time_ms || 0),
+      reactionTimeLabel: formatMillisecondsLabel(participant.reaction_time_ms),
+      clickedAt: toIsoString(participant.clicked_at),
+      joinedAt: toIsoString(participant.joined_at)
+    }));
+
+  leaderboardRows.sort((left, right) => {
+    if (left.reactionTimeMs !== right.reactionTimeMs) {
+      return left.reactionTimeMs - right.reactionTimeMs;
+    }
+
+    if (left.clickedAt && right.clickedAt && left.clickedAt !== right.clickedAt) {
+      return left.clickedAt.localeCompare(right.clickedAt);
+    }
+
+    return left.joinedAt.localeCompare(right.joinedAt);
+  });
+
+  return leaderboardRows.map((entry, index) => ({
+    rank: index + 1,
+    ...entry
+  }));
+}
+
+async function buildFastClickSnapshot(session, options = {}) {
+  if (!session) {
+    return null;
+  }
+
+  const participants = await getFastClickParticipants(session.id);
+  const leaderboard = buildFastClickLeaderboard(participants);
+  const participantId = options.participantId || null;
+  const participant = participantId
+    ? participants.find((entry) => entry.id === participantId) || null
+    : null;
+  const participantRank =
+    participantId ? leaderboard.find((entry) => entry.participantId === participantId)?.rank || null : null;
+  const clickedCount = leaderboard.length;
+
+  return {
+    sessionId: session.id,
+    serverNow: new Date().toISOString(),
+    status: String(session.status || FAST_CLICK_STATUSES.LOBBY),
+    phaseEndsAt: toIsoString(session.phase_ends_at),
+    greenStartsAt: toIsoString(session.green_starts_at),
+    room: {
+      id: session.id,
+      title: session.title,
+      roomCode: session.room_code,
+      joinUrl: `/fast-click/join/${session.room_code}`,
+      presentUrl: `/fast-click/${session.id}/present`
+    },
+    settings: {
+      countdownSeconds: Number(session.countdown_seconds || FAST_CLICK_DEFAULTS.countdownSeconds),
+      minSignalDelayMs: Number(session.min_signal_delay_ms || FAST_CLICK_DEFAULTS.minSignalDelayMs),
+      maxSignalDelayMs: Number(session.max_signal_delay_ms || FAST_CLICK_DEFAULTS.maxSignalDelayMs)
+    },
+    participantCount: participants.length,
+    clickedCount,
+    remainingCount: Math.max(0, participants.length - clickedCount),
+    participants: participants.map((entry) => ({
+      id: entry.id,
+      displayName: entry.display_name,
+      joinedAt: toIsoString(entry.joined_at),
+      clickedAt: toIsoString(entry.clicked_at),
+      hasClicked: Number.isFinite(Number(entry.reaction_time_ms)),
+      reactionTimeMs: Number.isFinite(Number(entry.reaction_time_ms))
+        ? Number(entry.reaction_time_ms)
+        : null
+    })),
+    leaderboard,
+    participant: participant
+      ? {
+          id: participant.id,
+          displayName: participant.display_name,
+          hasClicked: Number.isFinite(Number(participant.reaction_time_ms)),
+          reactionTimeMs: Number.isFinite(Number(participant.reaction_time_ms))
+            ? Number(participant.reaction_time_ms)
+            : null,
+          reactionTimeLabel: Number.isFinite(Number(participant.reaction_time_ms))
+            ? formatMillisecondsLabel(participant.reaction_time_ms)
+            : "",
+          rank: participantRank
+        }
+      : null
+  };
+}
+
+async function buildFastClickSetupViewModel(userId, options = {}) {
+  const user = await dbGet(
+    "SELECT id, name, email, created_at FROM users WHERE id = ?",
+    [userId]
+  );
+
+  if (!user) {
+    return null;
+  }
+
+  const recentSessions = await getUserFastClickSessions(userId);
+
+  return {
+    title: "Fast Click",
+    user,
+    formData: {
+      title: String(options.formData?.title || FAST_CLICK_DEFAULTS.title),
+      countdownSeconds: String(
+        options.formData?.countdownSeconds || FAST_CLICK_DEFAULTS.countdownSeconds
+      ),
+      minSignalDelayMs: String(
+        options.formData?.minSignalDelayMs || FAST_CLICK_DEFAULTS.minSignalDelayMs
+      ),
+      maxSignalDelayMs: String(
+        options.formData?.maxSignalDelayMs || FAST_CLICK_DEFAULTS.maxSignalDelayMs
+      )
+    },
+    flashError: options.error || "",
+    flashSuccess: options.success || "",
+    recentSessions: recentSessions.map((session) => ({
+      id: session.id,
+      title: session.title,
+      room_code: session.room_code,
+      status: session.status,
+      created_at: toIsoString(session.created_at),
+      start_url: `/fast-click/${session.id}/start`,
+      present_url: `/fast-click/${session.id}/present`,
+      join_url: `/fast-click/join/${session.room_code}`
+    }))
+  };
+}
+
+async function renderFastClickSetupPage(req, res, options = {}) {
+  const viewModel = await buildFastClickSetupViewModel(req.session.user.id, options);
+
+  if (!viewModel) {
+    res.redirect("/dashboard");
+    return;
+  }
+
+  res.status(options.statusCode || 200).render("fast-click-setup", viewModel);
+}
+
+async function buildFastClickStartViewModel(userId, sessionId) {
+  const user = await dbGet(
+    "SELECT id, name, email, created_at FROM users WHERE id = ?",
+    [userId]
+  );
+
+  if (!user) {
+    return null;
+  }
+
+  let session = await getOwnedFastClickSession(userId, sessionId);
+
+  if (!session) {
+    return null;
+  }
+
+  session = await syncFastClickSession(session);
+  const snapshot = await buildFastClickSnapshot(session);
+
+  return {
+    title: `Fast Click ${session.title}`,
+    user,
+    session,
+    initialSnapshot: snapshot,
+    serializedLiveSnapshot: JSON.stringify(snapshot || {}).replace(/</g, "\\u003c"),
+    serializedRealtimeConfig: JSON.stringify(
+      buildFastClickRealtimeClientConfig(session.id)
+    ).replace(/</g, "\\u003c")
+  };
+}
+
+async function renderFastClickStartPage(req, res, sessionId) {
+  const viewModel = await buildFastClickStartViewModel(req.session.user.id, sessionId);
+
+  if (!viewModel) {
+    res.redirect("/fast-click");
+    return;
+  }
+
+  res.render("fast-click-start", viewModel);
+}
+
+async function renderFastClickPresentPage(req, res, sessionId) {
+  const viewModel = await buildFastClickStartViewModel(req.session.user.id, sessionId);
+
+  if (!viewModel) {
+    res.redirect("/fast-click");
+    return;
+  }
+
+  res.render("fast-click-present", viewModel);
+}
+
+async function buildFastClickJoinViewModel(req, roomCode, options = {}) {
+  let session = await getFastClickSessionByRoomCode(roomCode);
+
+  if (!session) {
+    return null;
+  }
+
+  const participantEntry = getFastClickParticipantEntry(req, roomCode);
+
+  if (participantEntry?.sessionId) {
+    const storedSession = await getFastClickSessionById(participantEntry.sessionId);
+
+    if (!storedSession || storedSession.id !== session.id) {
+      clearFastClickParticipantEntry(req, roomCode);
+    }
+  }
+
+  const nextParticipantEntry = getFastClickParticipantEntry(req, roomCode);
+  const participant =
+    nextParticipantEntry?.participantId
+      ? await dbGet(
+          `
+            SELECT id, display_name, join_token, reaction_time_ms, joined_at, clicked_at, last_seen_at
+            FROM fast_click_participants
+            WHERE id = ? AND session_id = ?
+          `,
+          [nextParticipantEntry.participantId, session.id]
+        )
+      : null;
+
+  if (!participant && nextParticipantEntry) {
+    clearFastClickParticipantEntry(req, roomCode);
+  }
+
+  if (participant?.id) {
+    await touchFastClickParticipant(participant.id);
+  }
+
+  session = await syncFastClickSession(session);
+  const snapshot = await buildFastClickSnapshot(session, {
+    participantId: participant?.id || null
+  });
+  const joinState = participant?.id
+    ? "joined"
+    : session.status === FAST_CLICK_STATUSES.LOBBY
+      ? "lobby"
+      : session.status === FAST_CLICK_STATUSES.FINISHED
+        ? "finished"
+        : "late";
+
+  return {
+    title: session.title,
+    room: session,
+    liveSnapshot: snapshot,
+    serializedLiveSnapshot: JSON.stringify(snapshot || {}).replace(/</g, "\\u003c"),
+    serializedRealtimeConfig: JSON.stringify(
+      buildFastClickRealtimeClientConfig(session.id)
+    ).replace(/</g, "\\u003c"),
+    joinState,
+    participantCount: snapshot?.participantCount || 0,
+    participant,
+    joinError: options.error || ""
+  };
+}
+
+async function renderFastClickJoinPage(req, res, roomCode, options = {}) {
+  const viewModel = await buildFastClickJoinViewModel(req, roomCode, options);
+
+  if (!viewModel) {
+    res.status(404).render("error", {
+      title: "Not Found",
+      message: "That fast click room could not be found."
+    });
+    return;
+  }
+
+  res.status(options.statusCode || 200).render("fast-click-join", viewModel);
 }
 
 async function buildQuizStartViewModel(userId, itemId, options = {}) {
@@ -2370,7 +3673,10 @@ async function buildQuizStartViewModel(userId, itemId, options = {}) {
     },
     canGoLive: liveQuestions.some((question) => question.id),
     initialSnapshot,
-    serializedLiveSnapshot: JSON.stringify(initialSnapshot || {}).replace(/</g, "\\u003c")
+    serializedLiveSnapshot: JSON.stringify(initialSnapshot || {}).replace(/</g, "\\u003c"),
+    serializedRealtimeConfig: JSON.stringify(
+      buildQuizRealtimeClientConfig(initialSnapshot?.sessionId || syncedSession?.id || null)
+    ).replace(/</g, "\\u003c")
   };
 }
 
@@ -2408,6 +3714,7 @@ async function buildQuizJoinViewModel(req, quizCode, options = {}) {
   const settings = await loadQuizSettings(item.id);
   const liveQuestions = await loadQuizLiveQuestions(item.id);
   let liveSession = activeSession;
+  let liveSessionChanged = false;
 
   if (participantEntry?.sessionId) {
     const storedSession = await getQuizLiveSessionById(participantEntry.sessionId);
@@ -2445,7 +3752,11 @@ async function buildQuizJoinViewModel(req, quizCode, options = {}) {
   }
 
   if (liveSession) {
+    const previousLiveSessionState = liveSession;
     liveSession = await syncQuizLiveSession(liveSession, settings, liveQuestions);
+    liveSessionChanged =
+      getQuizLiveSessionRealtimeStateKey(previousLiveSessionState) !==
+      getQuizLiveSessionRealtimeStateKey(liveSession);
   }
 
   const snapshot =
@@ -2476,7 +3787,12 @@ async function buildQuizJoinViewModel(req, quizCode, options = {}) {
     joinState,
     participantCount: snapshot?.participantCount || 0,
     participant,
-    joinError: options.error || ""
+    joinError: options.error || "",
+    liveSession,
+    liveSessionChanged,
+    serializedRealtimeConfig: JSON.stringify(
+      buildQuizRealtimeClientConfig(snapshot?.sessionId || liveSession?.id || null)
+    ).replace(/</g, "\\u003c")
   };
 }
 
@@ -2503,6 +3819,8 @@ async function moveQuizLiveSessionToQuestion(session, questionIndex, question) {
     currentQuestionIndex: questionIndex,
     questionStartedAt: now.toISOString(),
     phaseEndsAt,
+    lastProgressBroadcastQuestionId: question?.id || null,
+    lastProgressBroadcastAnswerCount: 0,
     endedAt: null
   };
 
@@ -2549,12 +3867,13 @@ async function fillMissingQuizLiveAnswers(session, question) {
           participant_id,
           question_id,
           selected_choice_ids,
+          submitted_text,
           is_correct,
           response_time_ms
         )
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
       `,
-      [session.id, participant.id, question.id, serializeChoiceIdList([]), 0, fallbackResponseTimeMs]
+      [session.id, participant.id, question.id, serializeChoiceIdList([]), "", 0, fallbackResponseTimeMs]
     );
   }
 }
@@ -2629,6 +3948,8 @@ async function endQuizLiveSession(sessionId) {
     phaseMode: null,
     questionStartedAt: null,
     phaseEndsAt: null,
+    lastProgressBroadcastQuestionId: null,
+    lastProgressBroadcastAnswerCount: 0,
     endedAt: new Date().toISOString()
   });
 }
@@ -2843,6 +4164,10 @@ if (isProduction || isVercelDeployment) {
 
 app.use(express.urlencoded({ extended: true, limit: "12mb" }));
 app.use(express.json({ limit: "12mb" }));
+app.use(
+  "/vendor/supabase",
+  express.static(path.join(__dirname, "node_modules", "@supabase", "supabase-js", "dist", "umd"))
+);
 app.use(express.static(path.join(__dirname, "public")));
 app.use(
   session({
@@ -3516,7 +4841,9 @@ app.get("/api/quizzes/:id/live/:sessionId", requireAuth, async (req, res) => {
 
     const settings = await loadQuizSettings(itemId);
     const questions = await loadQuizLiveQuestions(itemId);
+    const previousLiveSession = liveSession;
     liveSession = await syncQuizLiveSession(liveSession, settings, questions);
+    await maybeBroadcastQuizLiveSessionTransition(previousLiveSession, liveSession, { settings });
     const snapshot = await buildQuizLiveSnapshot(liveSession, {
       settings,
       forHost: true
@@ -3547,7 +4874,9 @@ app.post("/api/quizzes/:id/live/:sessionId/advance", requireAuth, async (req, re
 
     const settings = await loadQuizSettings(itemId);
     const questions = await loadQuizLiveQuestions(itemId);
+    const previousLiveSession = liveSession;
     liveSession = await syncQuizLiveSession(liveSession, settings, questions);
+    await maybeBroadcastQuizLiveSessionTransition(previousLiveSession, liveSession, { settings });
 
     let updatedSession = liveSession;
 
@@ -3582,6 +4911,7 @@ app.post("/api/quizzes/:id/live/:sessionId/advance", requireAuth, async (req, re
       settings,
       forHost: true
     });
+    await broadcastQuizLiveSnapshot(updatedSession, { settings });
 
     res.json({ snapshot });
   } catch (error) {
@@ -3608,10 +4938,12 @@ app.post("/api/quizzes/:id/live/:sessionId/end", requireAuth, async (req, res) =
     }
 
     const updatedSession = await endQuizLiveSession(liveSession.id);
+    const settings = await loadQuizSettings(itemId);
     const snapshot = await buildQuizLiveSnapshot(updatedSession, {
-      settings: await loadQuizSettings(itemId),
+      settings,
       forHost: true
     });
+    await broadcastQuizLiveSnapshot(updatedSession, { settings });
 
     res.json({ snapshot });
   } catch (error) {
@@ -3773,11 +5105,14 @@ app.post("/quizzes/join/:quizCode/join", async (req, res) => {
       return;
     }
 
-    activeSession = await syncQuizLiveSession(
-      activeSession,
-      await loadQuizSettings(item.id),
-      await loadQuizLiveQuestions(item.id)
-    );
+    const settings = await loadQuizSettings(item.id);
+    const questions = await loadQuizLiveQuestions(item.id);
+    const previousActiveSession = activeSession;
+    activeSession = await syncQuizLiveSession(activeSession, settings, questions);
+    await maybeBroadcastQuizLiveSessionTransition(previousActiveSession, activeSession, {
+      item,
+      settings
+    });
 
     if (!activeSession || activeSession.status === QUIZ_LIVE_STATUSES.ENDED) {
       await renderQuizJoinPage(req, res, quizCode, {
@@ -3809,6 +5144,11 @@ app.post("/quizzes/join/:quizCode/join", async (req, res) => {
       joinToken: participant.join_token
     });
 
+    await broadcastQuizLiveSnapshot(activeSession, {
+      item,
+      settings
+    });
+
     req.session.save(() => {
       res.redirect(`/quizzes/join/${quizCode}`);
     });
@@ -3837,6 +5177,12 @@ app.get("/api/quizzes/join/:quizCode/state", async (req, res) => {
       return;
     }
 
+    if (viewModel.liveSessionChanged && viewModel.liveSession) {
+      await broadcastQuizLiveSnapshot(viewModel.liveSession, {
+        item: viewModel.item
+      });
+    }
+
     res.json({
       snapshot: viewModel.liveSnapshot,
       participant: viewModel.participant
@@ -3847,7 +5193,8 @@ app.get("/api/quizzes/join/:quizCode/state", async (req, res) => {
         : null,
       joinState: viewModel.joinState,
       activeSession: viewModel.activeSession,
-      participantCount: viewModel.participantCount || 0
+      participantCount: viewModel.participantCount || 0,
+      realtime: buildQuizRealtimeClientConfig(viewModel.liveSnapshot?.sessionId || viewModel.liveSession?.id || null)
     });
   } catch (error) {
     console.error("Load quiz participant state failed:", error);
@@ -3903,7 +5250,12 @@ app.post("/api/quizzes/join/:quizCode/answer", async (req, res) => {
 
     const settings = await loadQuizSettings(item.id);
     const questions = await loadQuizLiveQuestions(item.id);
+    const previousLiveSession = liveSession;
     liveSession = await syncQuizLiveSession(liveSession, settings, questions);
+    await maybeBroadcastQuizLiveSessionTransition(previousLiveSession, liveSession, {
+      item,
+      settings
+    });
 
     if (liveSession.status !== QUIZ_LIVE_STATUSES.QUESTION) {
       res.status(409).json({ error: "Answers are closed for this question." });
@@ -3936,27 +5288,51 @@ app.post("/api/quizzes/join/:quizCode/answer", async (req, res) => {
       return;
     }
 
-    const allowedChoiceIds = new Set(
-      currentQuestion.choices.map((choice) => choice.id).filter((choiceId) => choiceId)
-    );
-    const selectedChoiceIds = parseChoiceIdList(req.body.choiceIds).filter((choiceId) =>
-      allowedChoiceIds.has(choiceId)
-    );
+    let normalizedChoiceIds = [];
+    let submittedText = "";
+    let isCorrect = false;
 
-    if (!selectedChoiceIds.length) {
-      res.status(422).json({ error: "Choose at least one answer." });
-      return;
+    if (currentQuestion.questionType === "free_text") {
+      submittedText = normalizeFreeTextStoredValue(req.body.answerText);
+
+      if (!submittedText) {
+        res.status(422).json({ error: "Type your answer before submitting." });
+        return;
+      }
+
+      const correctAnswer = getQuestionCorrectFreeTextAnswer(currentQuestion);
+
+      if (!correctAnswer) {
+        res.status(422).json({ error: "This free-text question does not have a correct answer yet." });
+        return;
+      }
+
+      isCorrect = normalizeFreeTextAnswer(submittedText) === normalizeFreeTextAnswer(correctAnswer);
+    } else {
+      const allowedChoiceIds = new Set(
+        currentQuestion.choices.map((choice) => choice.id).filter((choiceId) => choiceId)
+      );
+      const selectedChoiceIds = parseChoiceIdList(req.body.choiceIds).filter((choiceId) =>
+        allowedChoiceIds.has(choiceId)
+      );
+
+      if (!selectedChoiceIds.length) {
+        res.status(422).json({ error: "Choose at least one answer." });
+        return;
+      }
+
+      normalizedChoiceIds =
+        currentQuestion.questionType === "multiple_choice"
+          ? selectedChoiceIds
+          : selectedChoiceIds.slice(0, 1);
+      const correctChoiceIds = currentQuestion.choices
+        .filter((choice) => choice.isCorrect)
+        .map((choice) => choice.id)
+        .filter((choiceId) => choiceId)
+        .sort((left, right) => left - right);
+      isCorrect = areChoiceSetsEqual(normalizedChoiceIds, correctChoiceIds);
     }
 
-    const normalizedChoiceIds =
-      currentQuestion.questionType === "multiple_choice"
-        ? selectedChoiceIds
-        : selectedChoiceIds.slice(0, 1);
-    const correctChoiceIds = currentQuestion.choices
-      .filter((choice) => choice.isCorrect)
-      .map((choice) => choice.id)
-      .filter((choiceId) => choiceId)
-      .sort((left, right) => left - right);
     const questionStartedAt = new Date(liveSession.question_started_at || Date.now()).getTime();
     const responseTimeMs = Math.max(0, Date.now() - questionStartedAt);
     const phaseEndsAt = liveSession.phase_ends_at
@@ -3968,8 +5344,6 @@ app.post("/api/quizzes/join/:quizCode/answer", async (req, res) => {
       return;
     }
 
-    const isCorrect = areChoiceSetsEqual(normalizedChoiceIds, correctChoiceIds);
-
     await dbRun(
       `
         INSERT INTO quiz_live_answers (
@@ -3977,16 +5351,18 @@ app.post("/api/quizzes/join/:quizCode/answer", async (req, res) => {
           participant_id,
           question_id,
           selected_choice_ids,
+          submitted_text,
           is_correct,
           response_time_ms
         )
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
       `,
       [
         liveSession.id,
         participant.id,
         currentQuestion.id,
         serializeChoiceIdList(normalizedChoiceIds),
+        submittedText,
         isCorrect ? 1 : 0,
         responseTimeMs
       ]
@@ -3999,11 +5375,370 @@ app.post("/api/quizzes/join/:quizCode/answer", async (req, res) => {
       settings,
       participantId: participant.id
     });
+    await maybeBroadcastQuizLiveQuestionProgress(liveSession, {
+      item,
+      settings,
+      questions,
+      question: currentQuestion
+    });
 
     res.json({ snapshot });
   } catch (error) {
     console.error("Submit quiz live answer failed:", error);
     res.status(500).json({ error: "Unable to submit the answer right now." });
+  }
+});
+
+app.get("/fast-click", requireAuth, async (req, res) => {
+  try {
+    await renderFastClickSetupPage(req, res);
+  } catch (error) {
+    console.error("Fast click setup page failed:", error);
+    res.status(500).render("error", {
+      title: "Server Error",
+      message: "The fast click setup page could not be loaded."
+    });
+  }
+});
+
+app.post("/fast-click", requireAuth, async (req, res) => {
+  const formData = {
+    title: String(req.body.title || ""),
+    countdownSeconds: String(req.body.countdownSeconds || ""),
+    minSignalDelayMs: String(req.body.minSignalDelayMs || ""),
+    maxSignalDelayMs: String(req.body.maxSignalDelayMs || "")
+  };
+
+  try {
+    const session = await createFastClickSession(req.session.user.id, formData);
+    res.redirect(`/fast-click/${session.id}/start`);
+  } catch (error) {
+    console.error("Create fast click session failed:", error);
+    await renderFastClickSetupPage(req, res, {
+      error: "Unable to create the fast click room right now.",
+      formData,
+      statusCode: 500
+    });
+  }
+});
+
+app.get("/fast-click/:sessionId/start", requireAuth, async (req, res) => {
+  const sessionId = parseItemId(req.params.sessionId);
+
+  if (!sessionId) {
+    res.redirect("/fast-click");
+    return;
+  }
+
+  try {
+    await renderFastClickStartPage(req, res, sessionId);
+  } catch (error) {
+    console.error("Fast click host page failed:", error);
+    res.status(500).render("error", {
+      title: "Server Error",
+      message: "The fast click host page could not be loaded."
+    });
+  }
+});
+
+app.get("/fast-click/:sessionId/present", requireAuth, async (req, res) => {
+  const sessionId = parseItemId(req.params.sessionId);
+
+  if (!sessionId) {
+    res.redirect("/fast-click");
+    return;
+  }
+
+  try {
+    await renderFastClickPresentPage(req, res, sessionId);
+  } catch (error) {
+    console.error("Fast click present page failed:", error);
+    res.status(500).render("error", {
+      title: "Server Error",
+      message: "The fast click present mode could not be loaded."
+    });
+  }
+});
+
+app.get("/api/fast-click/:sessionId/live", requireAuth, async (req, res) => {
+  const sessionId = parseItemId(req.params.sessionId);
+
+  if (!sessionId) {
+    res.status(404).json({ error: "Fast click room not found." });
+    return;
+  }
+
+  try {
+    let session = await getOwnedFastClickSession(req.session.user.id, sessionId);
+
+    if (!session) {
+      res.status(404).json({ error: "Fast click room not found." });
+      return;
+    }
+
+    const previousStatus = String(session.status || "");
+    session = await syncFastClickSession(session);
+    const snapshot = await buildFastClickSnapshot(session);
+
+    if (String(session.status || "") !== previousStatus) {
+      await broadcastFastClickSnapshot(session);
+    }
+
+    res.json({ snapshot });
+  } catch (error) {
+    console.error("Load fast click live state failed:", error);
+    res.status(500).json({ error: "Unable to load the fast click room right now." });
+  }
+});
+
+app.post("/api/fast-click/:sessionId/start", requireAuth, async (req, res) => {
+  const sessionId = parseItemId(req.params.sessionId);
+
+  if (!sessionId) {
+    res.status(404).json({ error: "Fast click room not found." });
+    return;
+  }
+
+  try {
+    let session = await getOwnedFastClickSession(req.session.user.id, sessionId);
+
+    if (!session) {
+      res.status(404).json({ error: "Fast click room not found." });
+      return;
+    }
+
+    session = await syncFastClickSession(session);
+
+    if (session.status === FAST_CLICK_STATUSES.LOBBY) {
+      session = await startFastClickSession(session);
+    }
+
+    const snapshot = await buildFastClickSnapshot(session);
+    await broadcastFastClickSnapshot(session);
+    res.json({ snapshot });
+  } catch (error) {
+    console.error("Start fast click failed:", error);
+    res.status(500).json({ error: "Unable to start the fast click round right now." });
+  }
+});
+
+app.post("/api/fast-click/:sessionId/end", requireAuth, async (req, res) => {
+  const sessionId = parseItemId(req.params.sessionId);
+
+  if (!sessionId) {
+    res.status(404).json({ error: "Fast click room not found." });
+    return;
+  }
+
+  try {
+    const session = await getOwnedFastClickSession(req.session.user.id, sessionId);
+
+    if (!session) {
+      res.status(404).json({ error: "Fast click room not found." });
+      return;
+    }
+
+    const endedSession = await finishFastClickSession(session.id);
+    const snapshot = await buildFastClickSnapshot(endedSession);
+    await broadcastFastClickSnapshot(endedSession);
+    res.json({ snapshot });
+  } catch (error) {
+    console.error("End fast click failed:", error);
+    res.status(500).json({ error: "Unable to end the fast click round right now." });
+  }
+});
+
+app.get("/fast-click/join/:roomCode", async (req, res) => {
+  const roomCode = String(req.params.roomCode || "").trim();
+
+  if (!/^\d{6}$/.test(roomCode)) {
+    res.status(404).render("error", {
+      title: "Not Found",
+      message: "That fast click room code is invalid."
+    });
+    return;
+  }
+
+  try {
+    await renderFastClickJoinPage(req, res, roomCode);
+  } catch (error) {
+    console.error("Fast click join page failed:", error);
+    res.status(500).render("error", {
+      title: "Server Error",
+      message: "The fast click join page could not be opened."
+    });
+  }
+});
+
+app.post("/fast-click/join/:roomCode/join", async (req, res) => {
+  const roomCode = String(req.params.roomCode || "").trim();
+  const displayName = String(req.body.displayName || "").trim().slice(0, 32);
+
+  if (!/^\d{6}$/.test(roomCode)) {
+    res.status(404).render("error", {
+      title: "Not Found",
+      message: "That fast click room code is invalid."
+    });
+    return;
+  }
+
+  if (!displayName) {
+    await renderFastClickJoinPage(req, res, roomCode, {
+      error: "Enter a nickname to join the fast click room.",
+      statusCode: 422
+    });
+    return;
+  }
+
+  try {
+    let session = await getFastClickSessionByRoomCode(roomCode);
+
+    if (!session) {
+      res.status(404).render("error", {
+        title: "Not Found",
+        message: "That fast click room could not be found."
+      });
+      return;
+    }
+
+    session = await syncFastClickSession(session);
+
+    const existingEntry = getFastClickParticipantEntry(req, roomCode);
+
+    if (existingEntry?.sessionId === session.id && existingEntry?.participantId) {
+      res.redirect(`/fast-click/join/${roomCode}`);
+      return;
+    }
+
+    if (session.status !== FAST_CLICK_STATUSES.LOBBY) {
+      await renderFastClickJoinPage(req, res, roomCode, {
+        statusCode: 409
+      });
+      return;
+    }
+
+    const participant = await createFastClickParticipant(session.id, displayName);
+    setFastClickParticipantEntry(req, roomCode, {
+      sessionId: session.id,
+      participantId: participant.id,
+      joinToken: participant.join_token
+    });
+
+    await broadcastFastClickSnapshot(session);
+    req.session.save(() => {
+      res.redirect(`/fast-click/join/${roomCode}`);
+    });
+  } catch (error) {
+    console.error("Fast click join failed:", error);
+    await renderFastClickJoinPage(req, res, roomCode, {
+      error: "Unable to join the fast click room right now.",
+      statusCode: 500
+    });
+  }
+});
+
+app.get("/api/fast-click/join/:roomCode/state", async (req, res) => {
+  const roomCode = String(req.params.roomCode || "").trim();
+
+  if (!/^\d{6}$/.test(roomCode)) {
+    res.status(404).json({ error: "That fast click room code is invalid." });
+    return;
+  }
+
+  try {
+    const viewModel = await buildFastClickJoinViewModel(req, roomCode);
+
+    if (!viewModel) {
+      res.status(404).json({ error: "That fast click room could not be found." });
+      return;
+    }
+
+    res.json({
+      snapshot: viewModel.liveSnapshot,
+      participant: viewModel.participant
+        ? {
+            id: viewModel.participant.id,
+            displayName: viewModel.participant.display_name
+          }
+        : null,
+      joinState: viewModel.joinState,
+      participantCount: viewModel.participantCount || 0,
+      realtime: buildFastClickRealtimeClientConfig(viewModel.liveSnapshot?.sessionId || null)
+    });
+  } catch (error) {
+    console.error("Load fast click participant state failed:", error);
+    res.status(500).json({ error: "Unable to load the fast click state right now." });
+  }
+});
+
+app.post("/api/fast-click/join/:roomCode/click", async (req, res) => {
+  const roomCode = String(req.params.roomCode || "").trim();
+
+  if (!/^\d{6}$/.test(roomCode)) {
+    res.status(404).json({ error: "That fast click room code is invalid." });
+    return;
+  }
+
+  try {
+    const participantEntry = getFastClickParticipantEntry(req, roomCode);
+
+    if (!participantEntry?.sessionId || !participantEntry?.participantId) {
+      res.status(401).json({ error: "Join the fast click room before clicking." });
+      return;
+    }
+
+    let session = await getFastClickSessionById(participantEntry.sessionId);
+
+    if (!session || session.room_code !== roomCode) {
+      clearFastClickParticipantEntry(req, roomCode);
+      res.status(409).json({ error: "This fast click room is no longer available." });
+      return;
+    }
+
+    const participant = await dbGet(
+      `
+        SELECT id, display_name, join_token, reaction_time_ms, joined_at, clicked_at, last_seen_at
+        FROM fast_click_participants
+        WHERE id = ? AND session_id = ?
+      `,
+      [participantEntry.participantId, session.id]
+    );
+
+    if (!participant || participant.join_token !== participantEntry.joinToken) {
+      clearFastClickParticipantEntry(req, roomCode);
+      res.status(401).json({ error: "This participant session is no longer valid." });
+      return;
+    }
+
+    session = await syncFastClickSession(session);
+
+    if (Number.isFinite(Number(participant.reaction_time_ms))) {
+      const snapshot = await buildFastClickSnapshot(session, { participantId: participant.id });
+      res.json({ snapshot });
+      return;
+    }
+
+    if (session.status !== FAST_CLICK_STATUSES.GREEN) {
+      res.status(409).json({ error: "Wait for the green signal before clicking." });
+      return;
+    }
+
+    const greenStartsAtMs = session.green_starts_at ? new Date(session.green_starts_at).getTime() : 0;
+    const reactionTimeMs = Math.max(0, Date.now() - greenStartsAtMs);
+    await recordFastClickReaction(participant.id, reactionTimeMs);
+
+    let snapshot = await buildFastClickSnapshot(session, { participantId: participant.id });
+
+    if (snapshot.remainingCount === 0 && snapshot.participantCount > 0) {
+      session = await finishFastClickSession(session.id);
+      snapshot = await buildFastClickSnapshot(session, { participantId: participant.id });
+    }
+
+    await broadcastFastClickSnapshot(session);
+    res.json({ snapshot });
+  } catch (error) {
+    console.error("Fast click submit failed:", error);
+    res.status(500).json({ error: "Unable to record the click right now." });
   }
 });
 

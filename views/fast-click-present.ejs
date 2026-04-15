@@ -1,0 +1,17 @@
+<%- include("partials/head", { title, pageStyles: ["/css/pages/fast-click-present.css"] }) %>
+
+<main class="quiz-present-page">
+  <section
+    class="quiz-present-shell"
+    data-fast-click-present
+    data-state-url="/api/fast-click/<%= session.id %>/live"
+  >
+    <script type="application/json" data-fast-click-present-data><%- serializedLiveSnapshot %></script>
+    <script type="application/json" data-quiz-live-realtime-config><%- serializedRealtimeConfig %></script>
+  </section>
+</main>
+
+<script src="/vendor/supabase/supabase.js"></script>
+<script src="/js/quiz-live-realtime.js"></script>
+<script src="/js/fast-click-present.js"></script>
+<%- include("partials/foot") %>

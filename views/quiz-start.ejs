@@ -43,10 +43,13 @@
         data-restart-url="/quizzes/<%= item.id %>/start"
       >
         <script type="application/json" data-quiz-live-host-data><%- serializedLiveSnapshot %></script>
+        <script type="application/json" data-quiz-live-realtime-config><%- serializedRealtimeConfig %></script>
       </section>
     <% } %>
   </section>
 </main>
 
+<script src="/vendor/supabase/supabase.js"></script>
+<script src="/js/quiz-live-realtime.js"></script>
 <script src="/js/quiz-live-host.js"></script>
 <%- include("partials/foot") %>

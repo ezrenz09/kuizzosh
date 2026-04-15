@@ -506,6 +506,40 @@
   background: rgba(3, 7, 12, 0.72);
 }
 
+.quiz-present-page .quiz-live-free-text-prompt,
+.quiz-present-page .quiz-live-free-text-reveal {
+  width: min(100%, 920px);
+}
+
+.quiz-present-page .quiz-live-free-text-prompt,
+.quiz-present-page .quiz-live-free-text-answer-card,
+.quiz-present-page .quiz-live-free-text-stat,
+.quiz-present-page .quiz-live-free-text-player-result {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(18px);
+}
+
+.quiz-present-page .quiz-live-free-text-prompt-icon {
+  background: rgba(255, 230, 45, 0.14);
+  color: #ffe98a;
+}
+
+.quiz-present-page .quiz-live-free-text-prompt-copy span,
+.quiz-present-page .quiz-live-free-text-answer-card span,
+.quiz-present-page .quiz-live-free-text-stat span,
+.quiz-present-page .quiz-live-free-text-player-result span {
+  color: rgba(255, 255, 255, 0.56);
+}
+
+.quiz-present-page .quiz-live-free-text-prompt-copy strong,
+.quiz-present-page .quiz-live-free-text-answer-card strong,
+.quiz-present-page .quiz-live-free-text-stat strong,
+.quiz-present-page .quiz-live-free-text-player-result strong {
+  color: #ffffff;
+}
+
 .quiz-present-page .quiz-live-choice-card {
   min-height: 120px;
   align-items: flex-start;

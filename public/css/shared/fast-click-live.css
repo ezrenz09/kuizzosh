@@ -1,0 +1,467 @@
+.fast-click-stage,
+.fast-click-host-stage {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.fast-click-stage-card,
+.fast-click-host-card,
+.fast-click-player-card {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 1.8rem;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.14);
+  padding: 1.6rem;
+}
+
+.fast-click-host-card {
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.fast-click-stage-card.is-dark {
+  background: rgba(15, 23, 42, 0.64);
+  color: #f8fafc;
+  border-color: rgba(148, 163, 184, 0.18);
+}
+
+.fast-click-stage-head,
+.fast-click-host-head,
+.fast-click-player-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+
+.fast-click-stage-copy,
+.fast-click-host-copy-block,
+.fast-click-player-copy {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.fast-click-stage-copy h2,
+.fast-click-host-copy-block h2,
+.fast-click-player-copy h2 {
+  margin: 0;
+  font-size: clamp(1.9rem, 4vw, 3.2rem);
+}
+
+.fast-click-stage-copy p,
+.fast-click-host-copy-block p,
+.fast-click-player-copy p {
+  margin: 0;
+  color: inherit;
+  opacity: 0.78;
+}
+
+.fast-click-room-code {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 8rem;
+  padding: 1rem 1.4rem;
+  border-radius: 999px;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  background: rgba(255, 250, 230, 0.95);
+  color: #9a6700;
+  font-weight: 800;
+  font-size: clamp(1.4rem, 3vw, 2.3rem);
+}
+
+.fast-click-chip-row,
+.fast-click-host-chip-row,
+.fast-click-player-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+}
+
+.fast-click-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.85rem 1rem;
+  border-radius: 1.1rem;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  min-width: 9rem;
+}
+
+.fast-click-chip-icon {
+  width: 1.15rem;
+  height: 1.15rem;
+  display: inline-grid;
+  place-items: center;
+  color: #9a6700;
+  flex: 0 0 auto;
+}
+
+.fast-click-chip-icon svg {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.fast-click-chip-copy {
+  display: grid;
+  gap: 0.12rem;
+}
+
+.fast-click-chip-copy span {
+  font-size: 0.74rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.fast-click-chip-copy strong {
+  font-size: 1.1rem;
+}
+
+.fast-click-chip.is-countdown {
+  border-color: rgba(251, 191, 36, 0.3);
+  background: rgba(255, 248, 219, 0.98);
+}
+
+.fast-click-stage-grid,
+.fast-click-player-stage {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+
+.fast-click-lobby-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+}
+
+.fast-click-lobby-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-radius: 999px;
+  background: rgba(255, 244, 204, 0.86);
+  border: 1px solid rgba(251, 191, 36, 0.34);
+  color: #7c5a00;
+  font-weight: 700;
+}
+
+.fast-click-signal-wrap {
+  display: grid;
+  justify-items: center;
+  gap: 1.2rem;
+  padding: 1rem 0 0.5rem;
+}
+
+.fast-click-signal-light {
+  width: min(42vw, 18rem);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 10px rgba(255, 255, 255, 0.28), 0 22px 50px rgba(15, 23, 42, 0.18);
+  position: relative;
+}
+
+.fast-click-signal-light::after {
+  content: "";
+  position: absolute;
+  inset: 10%;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.fast-click-signal-light.is-red {
+  background: #ef4444;
+}
+
+.fast-click-signal-light.is-green {
+  background: #22c55e;
+  animation: fast-click-green-pulse 1s ease-in-out infinite;
+}
+
+.fast-click-signal-light.is-waiting {
+  background: #f8fafc;
+}
+
+.fast-click-signal-light.is-finished {
+  background: #fde047;
+}
+
+.fast-click-countdown-number {
+  font-size: clamp(4rem, 12vw, 8rem);
+  font-weight: 800;
+  line-height: 1;
+}
+
+.fast-click-action-button {
+  width: min(36rem, 100%);
+  border: none;
+  border-radius: 1.5rem;
+  padding: 1.25rem 1.5rem;
+  font-size: clamp(1.2rem, 3vw, 1.8rem);
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16);
+}
+
+.fast-click-action-button.is-red {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.fast-click-action-button.is-green {
+  background: #22c55e;
+  color: #f8fafc;
+}
+
+.fast-click-action-button.is-green:hover {
+  transform: translateY(-2px) scale(1.01);
+}
+
+.fast-click-action-button[disabled] {
+  opacity: 0.8;
+  cursor: not-allowed;
+}
+
+.fast-click-inline-facts {
+  display: grid;
+  gap: 1rem;
+}
+
+.fast-click-inline-fact {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.9rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.fast-click-inline-fact-icon {
+  width: 1.2rem;
+  height: 1.2rem;
+  display: inline-grid;
+  place-items: center;
+  color: #9a6700;
+  flex: 0 0 auto;
+}
+
+.fast-click-inline-fact-icon svg {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.fast-click-inline-fact-copy {
+  display: grid;
+  gap: 0.22rem;
+}
+
+.fast-click-inline-fact-copy strong {
+  color: #0f172a;
+  font-size: 0.98rem;
+}
+
+.fast-click-inline-fact-copy span {
+  color: #64748b;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.fast-click-results-board {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.fast-click-result-highlight {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: center;
+  text-align: center;
+}
+
+.fast-click-result-time {
+  font-size: clamp(3rem, 9vw, 5rem);
+  line-height: 1;
+  font-weight: 800;
+  color: #facc15;
+}
+
+.fast-click-rank-list {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.fast-click-rank-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  border-radius: 1.15rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.fast-click-rank-row.is-light {
+  background: #fff;
+  border-color: rgba(148, 163, 184, 0.18);
+}
+
+.fast-click-rank-row.is-active {
+  border-color: rgba(250, 204, 21, 0.45);
+  box-shadow: 0 16px 34px rgba(250, 204, 21, 0.12);
+}
+
+.fast-click-rank-number {
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  background: rgba(250, 204, 21, 0.16);
+  color: inherit;
+}
+
+.fast-click-rank-copy {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.fast-click-rank-copy strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fast-click-rank-copy span {
+  opacity: 0.74;
+}
+
+.fast-click-host-actions {
+  display: flex;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.fast-click-present-stage .fast-click-stage-card.is-emphasis {
+  justify-content: center;
+}
+
+.fast-click-present-code {
+  font-size: clamp(4rem, 9vw, 7rem);
+  line-height: 0.9;
+  letter-spacing: 0.08em;
+  color: #ffe766;
+}
+
+.fast-click-player-head {
+  align-items: flex-start;
+}
+
+.fast-click-player-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  justify-content: flex-end;
+}
+
+.fast-click-player-stage .fast-click-player-card:nth-child(2) {
+  align-self: start;
+}
+
+.fast-click-player-card .fast-click-rank-list {
+  margin-top: 0.35rem;
+}
+
+.fast-click-empty-note {
+  margin: 0;
+  color: #64748b;
+}
+
+.fast-click-stage-card.is-dark .fast-click-chip {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.fast-click-stage-card.is-dark .fast-click-chip-copy span {
+  color: rgba(226, 232, 240, 0.72);
+}
+
+.fast-click-stage-card.is-dark .fast-click-chip-copy strong,
+.fast-click-stage-card.is-dark .fast-click-inline-fact-copy strong {
+  color: #f8fafc;
+}
+
+.fast-click-stage-card.is-dark .fast-click-inline-fact {
+  border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+.fast-click-stage-card.is-dark .fast-click-inline-fact-copy span,
+.fast-click-stage-card.is-dark .fast-click-empty-note,
+.fast-click-stage-card.is-dark .fast-click-rank-copy span {
+  color: rgba(226, 232, 240, 0.72);
+}
+
+.fast-click-stage-card.is-dark .fast-click-lobby-pill {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+}
+
+.fast-click-stage-card.is-dark .fast-click-rank-row {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.fast-click-stage-card.is-dark .fast-click-rank-row.is-active {
+  border-color: rgba(250, 204, 21, 0.32);
+}
+
+@keyframes fast-click-green-pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: inset 0 0 0 10px rgba(255, 255, 255, 0.28), 0 22px 50px rgba(34, 197, 94, 0.22);
+  }
+
+  50% {
+    transform: scale(1.04);
+    box-shadow: inset 0 0 0 10px rgba(255, 255, 255, 0.28), 0 28px 60px rgba(34, 197, 94, 0.34);
+  }
+}
+
+@media (max-width: 900px) {
+  .fast-click-stage-head,
+  .fast-click-host-head,
+  .fast-click-player-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .fast-click-room-code {
+    width: 100%;
+  }
+
+  .fast-click-stage-grid,
+  .fast-click-player-stage {
+    grid-template-columns: 1fr;
+  }
+
+  .fast-click-player-chip-row {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .fast-click-chip {
+    width: 100%;
+  }
+
+  .fast-click-host-actions .primary-button,
+  .fast-click-host-actions .secondary-button,
+  .fast-click-action-button {
+    width: 100%;
+  }
+}

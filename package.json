@@ -7,7 +7,8 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "migrate:sqlite-to-postgres": "node scripts/migrate-sqlite-to-postgres.js",
-    "migrate:to-supabase": "node scripts/migrate-to-supabase.js"
+    "migrate:to-supabase": "node scripts/migrate-to-supabase.js",
+    "loadtest:quiz": "node scripts/load-test-live-quiz.js"
   },
   "keywords": [
     "kuizzosh",

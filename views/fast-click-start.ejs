@@ -1,0 +1,44 @@
+<%- include("partials/head", { title, pageStyles: ["/css/pages/fast-click-start.css"] }) %>
+
+<main class="dashboard-page">
+  <%- include("partials/sidebar", { user, currentPath }) %>
+
+  <section class="dashboard-main dashboard-main-clean fast-click-host-page">
+    <div class="setup-backbar">
+      <a href="/fast-click" class="setup-backlink">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M15 6 9 12l6 6"></path>
+        </svg>
+        <span>Back to Fast Click Setup</span>
+      </a>
+    </div>
+
+    <section class="quiz-live-host-hero">
+      <div class="quiz-live-host-copy">
+        <span class="section-pill">Fast Click Room</span>
+        <h1><%= session.title %></h1>
+        <p>Open presenter mode, let players join, then launch the reaction-speed round.</p>
+      </div>
+
+      <div class="quiz-live-host-hero-actions">
+        <a href="/fast-click/<%= session.id %>/present" class="secondary-button" target="_blank" rel="noreferrer">Present Mode</a>
+      </div>
+    </section>
+
+    <section
+      class="quiz-live-host-shell"
+      data-fast-click-host
+      data-state-url="/api/fast-click/<%= session.id %>/live"
+      data-start-url="/api/fast-click/<%= session.id %>/start"
+      data-end-url="/api/fast-click/<%= session.id %>/end"
+    >
+      <script type="application/json" data-fast-click-host-data><%- serializedLiveSnapshot %></script>
+      <script type="application/json" data-quiz-live-realtime-config><%- serializedRealtimeConfig %></script>
+    </section>
+  </section>
+</main>
+
+<script src="/vendor/supabase/supabase.js"></script>
+<script src="/js/quiz-live-realtime.js"></script>
+<script src="/js/fast-click-host.js"></script>
+<%- include("partials/foot") %>
