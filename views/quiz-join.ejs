@@ -92,7 +92,8 @@
             </div>
           </div>
 
-          <form action="/quizzes/join/<%= item.quiz_code %>/join" method="post" class="quiz-player-join-form quiz-player-entry-form" data-quiz-join-form <%= joinState === 'late' ? 'hidden' : '' %>>
+          <form action="/quizzes/join/<%= quizCode %>/join" method="post" class="quiz-player-join-form quiz-player-entry-form" data-quiz-join-form <%= joinState === 'late' ? 'hidden' : '' %>>
+            <input type="hidden" name="quizCode" value="<%= quizCode %>" />
             <label class="field quiz-player-entry-field">
               <span>Nickname</span>
               <input type="text" name="displayName" maxlength="32" placeholder="Enter your nickname" />
@@ -111,8 +112,8 @@
     <section
       class="quiz-player-shell quiz-player-shell-live"
       data-quiz-live-player
-      data-state-url="/api/quizzes/join/<%= item.quiz_code %>/state"
-      data-answer-url="/api/quizzes/join/<%= item.quiz_code %>/answer"
+      data-state-url="/api/quizzes/join/<%= quizCode %>/state"
+      data-answer-url="/api/quizzes/join/<%= quizCode %>/answer"
     >
       <script type="application/json" data-quiz-live-player-data><%- serializedLiveSnapshot %></script>
       <script type="application/json" data-quiz-live-realtime-config><%- serializedRealtimeConfig %></script>

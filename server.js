@@ -3787,6 +3787,7 @@ async function buildQuizJoinViewModel(req, quizCode, options = {}) {
 
   return {
     title: item.title,
+    quizCode: String(quizCode || item.quiz_code || "").trim(),
     item: {
       ...item,
       duration_label: buildDurationLabel(item.start_date, item.end_date)
@@ -3818,6 +3819,18 @@ async function renderQuizJoinPage(req, res, quizCode, options = {}) {
   }
 
   res.status(options.statusCode || 200).render("quiz-join", viewModel);
+}
+
+function extractQuizCodeFromJoinRequest(req) {
+  const directQuizCode = String(req.body?.quizCode || req.query?.quizCode || "").trim();
+
+  if (/^\d{6}$/.test(directQuizCode)) {
+    return directQuizCode;
+  }
+
+  const referer = String(req.get("referer") || "").trim();
+  const refererMatch = referer.match(/\/quizzes\/join\/(\d{6})(?:[/?#]|$)/);
+  return refererMatch ? refererMatch[1] : "";
 }
 
 async function moveQuizLiveSessionToQuestion(session, questionIndex, question) {
@@ -5072,6 +5085,20 @@ app.get("/quizzes/join/:quizCode", async (req, res) => {
       message: "The quiz join page could not be opened."
     });
   }
+});
+
+app.post(/^\/quizzes(?:\/join(?:\/+join)?)?\/?$/, (req, res) => {
+  const recoveredQuizCode = extractQuizCodeFromJoinRequest(req);
+
+  if (!/^\d{6}$/.test(recoveredQuizCode)) {
+    res.status(400).render("error", {
+      title: "Invalid Join Request",
+      message: "The join request is missing the quiz code. Reload the join page and try again."
+    });
+    return;
+  }
+
+  res.redirect(307, `/quizzes/join/${recoveredQuizCode}/join`);
 });
 
 app.post("/quizzes/join/:quizCode/join", async (req, res) => {
