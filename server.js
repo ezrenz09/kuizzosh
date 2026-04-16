@@ -17,6 +17,7 @@ const DB_PATH = path.join(DATA_DIR, "kuizzosh.sqlite");
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
 const SUPABASE_DATABASE_URL = String(process.env.SUPABASE_DATABASE_URL || "").trim();
 const RUNTIME_DATABASE_URL = DATABASE_URL || SUPABASE_DATABASE_URL;
+const IS_VERCEL = Boolean(process.env.VERCEL);
 const SUPABASE_URL = String(process.env.SUPABASE_URL || "").trim();
 const SUPABASE_ANON_KEY = String(process.env.SUPABASE_ANON_KEY || "").trim();
 const SUPABASE_SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
@@ -28,7 +29,7 @@ const QUIZ_REALTIME_SNAPSHOT_EVENT = "snapshot";
 const QUIZ_REALTIME_PROGRESS_EVENT = "progress";
 
 if (!USE_POSTGRES) {
-  if (process.env.VERCEL) {
+  if (IS_VERCEL) {
     throw new Error(
       "Missing DATABASE_URL on Vercel. Set DATABASE_URL or SUPABASE_DATABASE_URL to your Supabase Postgres connection string."
     );
@@ -49,11 +50,19 @@ if (USE_POSTGRES) {
 
   pool = new Pool({
     connectionString: RUNTIME_DATABASE_URL,
+    max: IS_VERCEL ? 1 : 10,
+    idleTimeoutMillis: IS_VERCEL ? 5000 : 30000,
+    connectionTimeoutMillis: 10000,
+    allowExitOnIdle: true,
     ssl: RUNTIME_DATABASE_URL.includes("localhost")
       ? false
       : {
           rejectUnauthorized: false
         }
+  });
+
+  pool.on("error", (error) => {
+    console.error("Unexpected Postgres pool error:", error);
   });
 
   sessionStore = new PgSession({
@@ -6049,13 +6058,61 @@ app.post("/logout", requireAuth, (req, res) => {
   });
 });
 
-initializeDatabase()
-  .then(() => {
-    app.listen(PORT, () => {
-      console.log(`Kuizzosh is running at http://localhost:${PORT}`);
+let initializationPromise = null;
+
+function ensureInitialized() {
+  if (!initializationPromise) {
+    initializationPromise = initializeDatabase().catch((error) => {
+      initializationPromise = null;
+      throw error;
     });
-  })
-  .catch((error) => {
-    console.error("Failed to initialize the application:", error);
-    process.exit(1);
+  }
+
+  return initializationPromise;
+}
+
+function handleInitializationError(req, res, error) {
+  console.error("Failed to initialize the application:", error);
+
+  if (res.headersSent) {
+    return;
+  }
+
+  const acceptsJson =
+    req.path.startsWith("/api/") ||
+    String(req.headers.accept || "").includes("application/json");
+
+  if (acceptsJson) {
+    res.status(500).json({
+      error: "The application could not be initialized right now."
+    });
+    return;
+  }
+
+  res.status(500).render("error", {
+    title: "Server Error",
+    message: "The application could not be initialized right now."
   });
+}
+
+if (IS_VERCEL) {
+  module.exports = async (req, res) => {
+    try {
+      await ensureInitialized();
+      return app(req, res);
+    } catch (error) {
+      return handleInitializationError(req, res, error);
+    }
+  };
+} else {
+  ensureInitialized()
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`Kuizzosh is running at http://localhost:${PORT}`);
+      });
+    })
+    .catch((error) => {
+      console.error("Failed to initialize the application:", error);
+      process.exit(1);
+    });
+}
