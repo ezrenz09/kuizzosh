@@ -50,7 +50,7 @@ if (USE_POSTGRES) {
 
   pool = new Pool({
     connectionString: RUNTIME_DATABASE_URL,
-    max: IS_VERCEL ? 1 : 10,
+    max: IS_VERCEL ? 3 : 10,
     idleTimeoutMillis: IS_VERCEL ? 5000 : 30000,
     connectionTimeoutMillis: 10000,
     allowExitOnIdle: true,
@@ -1686,6 +1686,7 @@ async function initializeDatabase() {
     await ensureFastClickSessionColumns();
     await ensureFastClickParticipantColumns();
     await ensureUserAuthColumns();
+    await ensureModuleQuizCodes();
 
     return;
   }
