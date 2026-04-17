@@ -5101,6 +5101,20 @@ app.post(/^\/quizzes(?:\/join(?:\/+join)?)?\/?$/, (req, res) => {
   res.redirect(307, `/quizzes/join/${recoveredQuizCode}/join`);
 });
 
+app.post("/quizzes/join/:quizCode", (req, res) => {
+  const quizCode = String(req.params.quizCode || "").trim();
+
+  if (!/^\d{6}$/.test(quizCode)) {
+    res.status(404).render("error", {
+      title: "Not Found",
+      message: "That quiz code is invalid."
+    });
+    return;
+  }
+
+  res.redirect(307, `/quizzes/join/${quizCode}/join`);
+});
+
 app.post("/quizzes/join/:quizCode/join", async (req, res) => {
   const quizCode = String(req.params.quizCode || "").trim();
   const displayName = String(req.body.displayName || "").trim().slice(0, 32);
@@ -5287,12 +5301,7 @@ app.post("/api/quizzes/join/:quizCode/answer", async (req, res) => {
 
     const settings = await loadQuizSettings(item.id);
     const questions = await loadQuizLiveQuestions(item.id);
-    const previousLiveSession = liveSession;
     liveSession = await syncQuizLiveSession(liveSession, settings, questions);
-    await maybeBroadcastQuizLiveSessionTransition(previousLiveSession, liveSession, {
-      item,
-      settings
-    });
 
     if (liveSession.status !== QUIZ_LIVE_STATUSES.QUESTION) {
       res.status(409).json({ error: "Answers are closed for this question." });
@@ -5411,12 +5420,6 @@ app.post("/api/quizzes/join/:quizCode/answer", async (req, res) => {
       item,
       settings,
       participantId: participant.id
-    });
-    await maybeBroadcastQuizLiveQuestionProgress(liveSession, {
-      item,
-      settings,
-      questions,
-      question: currentQuestion
     });
 
     res.json({ snapshot });

@@ -15,8 +15,6 @@ const quizLivePlayerDataScript = document.querySelector("[data-quiz-live-player-
 
 if (quizJoinGate && !quizLivePlayerShell) {
   const stateUrl = `/api${window.location.pathname}/state`;
-  let realtimeSubscription = null;
-  let realtimeSessionId = null;
 
   if (quizJoinForm) {
     quizJoinForm.addEventListener("submit", () => {
@@ -99,59 +97,7 @@ if (quizJoinGate && !quizLivePlayerShell) {
       quizJoinCountLabel.textContent = joinedLabel;
     }
   };
-
-  const applyJoinPayload = (payload = {}) => {
-    const snapshot = payload.snapshot || null;
-    const joinState =
-      payload.joinState ||
-      (snapshot?.status === "lobby"
-        ? "lobby"
-        : snapshot && snapshot.status !== "ended"
-          ? "late"
-          : payload.activeSession
-            ? "lobby"
-            : "waiting");
-
-    setJoinState(joinState);
-    setJoinCount(Number(payload.participantCount ?? snapshot?.participantCount ?? 0));
-
-    if (payload.participant) {
-      window.location.reload();
-      return;
-    }
-
-    const nextSessionId =
-      Number.parseInt(String(snapshot?.sessionId || payload.realtime?.sessionId || ""), 10) || null;
-
-    if (
-      nextSessionId &&
-      nextSessionId !== realtimeSessionId &&
-      typeof window.createQuizLiveRealtimeSubscription === "function"
-    ) {
-      Promise.resolve(realtimeSubscription?.unsubscribe?.())
-        .catch(() => {})
-        .finally(async () => {
-          realtimeSessionId = nextSessionId;
-          realtimeSubscription = await window.createQuizLiveRealtimeSubscription({
-            sessionId: nextSessionId,
-            onSnapshot: (nextSnapshot) => {
-              applyJoinPayload({
-                snapshot: nextSnapshot,
-                joinState:
-                  nextSnapshot?.status === "lobby"
-                    ? "lobby"
-                    : nextSnapshot && nextSnapshot.status !== "ended"
-                      ? "late"
-                      : "waiting",
-                participantCount: nextSnapshot?.participantCount || 0
-              });
-            }
-          });
-        });
-    }
-  };
-
-  const loadJoinState = async () => {
+  window.setInterval(async () => {
     try {
       const response = await fetch(stateUrl, {
         headers: {
@@ -164,19 +110,16 @@ if (quizJoinGate && !quizLivePlayerShell) {
       }
 
       const payload = await response.json();
-      applyJoinPayload(payload);
+      setJoinState(payload.joinState || (payload.activeSession ? "lobby" : "waiting"));
+      setJoinCount(Number(payload.participantCount || 0));
+
+      if (payload.participant) {
+        window.location.reload();
+      }
     } catch (error) {
       // keep current gate state
     }
-  };
-
-  loadJoinState().catch(() => {});
-  window.setInterval(() => {
-    loadJoinState().catch(() => {});
-  }, 4000);
-  window.addEventListener("beforeunload", () => {
-    Promise.resolve(realtimeSubscription?.unsubscribe?.()).catch(() => {});
-  });
+  }, 2000);
 }
 
 if (quizLivePlayerShell && quizLivePlayerDataScript) {
@@ -195,8 +138,6 @@ if (quizLivePlayerShell && quizLivePlayerDataScript) {
   let wrongAnswerPopupVisible = false;
   let wrongAnswerPopupTimer = null;
   let animatedChoiceStatsKey = "";
-  let realtimeSubscription = null;
-  let realtimeSessionId = null;
   const audioController =
     typeof window.createQuizLiveAudioController === "function"
       ? window.createQuizLiveAudioController({
@@ -1074,28 +1015,6 @@ if (quizLivePlayerShell && quizLivePlayerDataScript) {
     }
   };
 
-  const ensureRealtimeSubscription = async (sessionId) => {
-    const nextSessionId = Number.parseInt(String(sessionId || ""), 10);
-
-    if (
-      !Number.isInteger(nextSessionId) ||
-      nextSessionId <= 0 ||
-      realtimeSessionId === nextSessionId ||
-      typeof window.createQuizLiveRealtimeSubscription !== "function"
-    ) {
-      return;
-    }
-
-    await Promise.resolve(realtimeSubscription?.unsubscribe?.()).catch(() => {});
-    realtimeSessionId = nextSessionId;
-    realtimeSubscription = await window.createQuizLiveRealtimeSubscription({
-      sessionId: nextSessionId,
-      onSnapshot: (snapshot) => {
-        applyServerSnapshot(snapshot);
-      }
-    });
-  };
-
   const applyServerSnapshot = (snapshot) => {
     if (!snapshot) {
       return;
@@ -1111,7 +1030,6 @@ if (quizLivePlayerShell && quizLivePlayerDataScript) {
 
     liveSnapshot = snapshot;
     boundarySyncKey = "";
-    ensureRealtimeSubscription(snapshot.sessionId).catch(() => {});
 
     if (!shouldDeferTypingRender) {
       render(liveSnapshot);
@@ -1246,10 +1164,9 @@ if (quizLivePlayerShell && quizLivePlayerDataScript) {
   });
 
   render(liveSnapshot);
-  ensureRealtimeSubscription(liveSnapshot.sessionId).catch(() => {});
   window.setInterval(() => {
     loadState().catch(() => {});
-  }, 15000);
+  }, 1000);
   window.setInterval(() => {
     const countdown = quizLivePlayerShell.querySelector("[data-player-countdown]");
     if (countdown) {
@@ -1284,7 +1201,4 @@ if (quizLivePlayerShell && quizLivePlayerDataScript) {
       }
     }
   }, 250);
-  window.addEventListener("beforeunload", () => {
-    Promise.resolve(realtimeSubscription?.unsubscribe?.()).catch(() => {});
-  });
 }

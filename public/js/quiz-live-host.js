@@ -6,13 +6,10 @@ if (quizLiveHostShell && quizLiveHostDataScript) {
   const advanceUrl = quizLiveHostShell.dataset.advanceUrl || "";
   const endUrl = quizLiveHostShell.dataset.endUrl || "";
   const restartUrl = quizLiveHostShell.dataset.restartUrl || "";
-  const STATE_POLL_INTERVAL_MS = 15000;
   let liveSnapshot = {};
   let actionPending = false;
   let boundarySyncKey = "";
   let animatedChoiceStatsKey = "";
-  let realtimeSubscription = null;
-  let realtimeSessionId = null;
   const hostIcons = {
     spark:
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8Z"></path></svg>',
@@ -681,8 +678,6 @@ if (quizLiveHostShell && quizLiveHostDataScript) {
   };
 
   const render = (snapshot) => {
-    ensureRealtimeSubscription(snapshot.sessionId).catch(() => {});
-
     const isChartStage = snapshot.status === "leaderboard" && snapshot.phaseMode === "chart";
     if (!isChartStage) {
       animatedChoiceStatsKey = "";
@@ -703,67 +698,6 @@ if (quizLiveHostShell && quizLiveHostDataScript) {
       animateChoiceStats(quizLiveHostShell);
       animatedChoiceStatsKey = getChoiceStatsAnimationKey(snapshot);
     }
-  };
-
-  const applyProgressUpdate = (progress) => {
-    if (
-      !progress ||
-      liveSnapshot.status !== "question" ||
-      progress.status !== "question" ||
-      Number(progress.sessionId || 0) !== Number(liveSnapshot.sessionId || 0) ||
-      Number(progress.currentQuestionId || 0) !== Number(liveSnapshot.currentQuestion?.id || 0)
-    ) {
-      return;
-    }
-
-    liveSnapshot = {
-      ...liveSnapshot,
-      serverNow: progress.serverNow || liveSnapshot.serverNow,
-      participantCount: Number(progress.participantCount || 0),
-      answeredCount: Number(progress.answeredCount || 0),
-      unansweredCount: Number(progress.unansweredCount || 0),
-      answeredPercentage: Number(progress.answeredPercentage || 0),
-      currentQuestion: {
-        ...liveSnapshot.currentQuestion,
-        correctResponseCount: Number(
-          progress.currentQuestion?.correctResponseCount ?? liveSnapshot.currentQuestion?.correctResponseCount ?? 0
-        ),
-        incorrectResponseCount: Number(
-          progress.currentQuestion?.incorrectResponseCount ?? liveSnapshot.currentQuestion?.incorrectResponseCount ?? 0
-        ),
-        typedResponseCount: Number(
-          progress.currentQuestion?.typedResponseCount ?? liveSnapshot.currentQuestion?.typedResponseCount ?? 0
-        )
-      }
-    };
-    render(liveSnapshot);
-  };
-
-  const ensureRealtimeSubscription = async (sessionId) => {
-    const nextSessionId = Number.parseInt(String(sessionId || ""), 10);
-
-    if (
-      !Number.isInteger(nextSessionId) ||
-      nextSessionId <= 0 ||
-      realtimeSessionId === nextSessionId ||
-      typeof window.createQuizLiveRealtimeSubscription !== "function"
-    ) {
-      return;
-    }
-
-    await Promise.resolve(realtimeSubscription?.unsubscribe?.()).catch(() => {});
-    realtimeSessionId = nextSessionId;
-    realtimeSubscription = await window.createQuizLiveRealtimeSubscription({
-      sessionId: nextSessionId,
-      onSnapshot: (snapshot) => {
-        liveSnapshot = snapshot || {};
-        boundarySyncKey = "";
-        render(liveSnapshot);
-      },
-      onProgress: (progress) => {
-        applyProgressUpdate(progress);
-      }
-    });
   };
 
   const loadState = async () => {
@@ -837,7 +771,7 @@ if (quizLiveHostShell && quizLiveHostDataScript) {
   render(liveSnapshot);
   window.setInterval(() => {
     loadState().catch(() => {});
-  }, STATE_POLL_INTERVAL_MS);
+  }, 1000);
   window.setInterval(() => {
     const countdown = quizLiveHostShell.querySelector("[data-live-countdown]");
     if (countdown) {
@@ -859,7 +793,4 @@ if (quizLiveHostShell && quizLiveHostDataScript) {
       }
     }
   }, 250);
-  window.addEventListener("beforeunload", () => {
-    Promise.resolve(realtimeSubscription?.unsubscribe?.()).catch(() => {});
-  });
 }
